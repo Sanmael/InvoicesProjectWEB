@@ -280,3 +280,25 @@ export interface EmailTestResult {
   success: boolean
   message: string
 }
+
+// Chat types
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export interface ChatRequest {
+  message: string
+  history?: ChatMessage[]
+}
+
+export interface ChatActionResult {
+  type: string
+  description: string
+  success: boolean
+}
+
+export interface ChatResponse {
+  reply: string
+  actions?: ChatActionResult[]
+}

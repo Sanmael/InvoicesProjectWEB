@@ -171,12 +171,14 @@ async function handleDeleteGroup(groupId: string) {
       <div class="header-actions">
         <div class="month-filter">
           <label for="receivable-month">Filtrar mês</label>
-          <div class="month-filter-input">
-            <input id="receivable-month" v-model="selectedMonth" type="month" />
-            <button v-if="selectedMonth" class="btn-clear-filter" @click="selectedMonth = ''" title="Limpar filtro">✕</button>
+          <div class="month-filter-row">
+            <div class="month-filter-input">
+              <input id="receivable-month" v-model="selectedMonth" type="month" />
+              <button v-if="selectedMonth" class="btn-clear-filter" @click="selectedMonth = ''" title="Limpar filtro">✕</button>
+            </div>
+            <button @click="openModal" class="btn-primary">+ Novo Recebível</button>
           </div>
         </div>
-        <button @click="openModal" class="btn-primary">+ Novo Recebível</button>
       </div>
     </header>
 
@@ -459,6 +461,7 @@ async function handleDeleteGroup(groupId: string) {
 
 .month-filter { display: flex; flex-direction: column; gap: 0.25rem; }
 .month-filter label { font-size: 0.8rem; color: var(--text-secondary); }
+.month-filter-row { display: flex; align-items: center; gap: 1rem; }
 .month-filter-input { display: flex; align-items: center; gap: 0.35rem; }
 .month-filter-input input {
   padding: 0.5rem 0.65rem;

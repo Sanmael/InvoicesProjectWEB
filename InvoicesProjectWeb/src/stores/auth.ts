@@ -15,7 +15,13 @@ export const useAuthStore = defineStore('auth', () => {
   // Carregar usuário do localStorage ao iniciar
   const storedUser = localStorage.getItem('user')
   if (storedUser) {
-    user.value = JSON.parse(storedUser)
+    try {
+      user.value = JSON.parse(storedUser)
+    } catch {
+      localStorage.removeItem('user')
+      localStorage.removeItem('token')
+      token.value = null
+    }
   }
 
   async function initializeAuth(): Promise<void> {

@@ -51,10 +51,15 @@ const router = createRouter({
           component: () => import('@/views/ProfileView.vue'),
         },
         {
+          path: 'chat',
+          name: 'chat',
+          component: () => import('@/views/ChatView.vue'),
+        },
+        {
           path: 'admin/email-settings',
           name: 'admin-email-settings',
           component: () => import('@/views/AdminEmailSettingsView.vue'),
-          meta: { requiresAdmin: true },
+          meta: { requiresAuth: true, requiresAdmin: true },
         },
       ],
     },
@@ -74,8 +79,8 @@ router.beforeEach(async (to, _from, next) => {
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next('/login')
-  } else if (to.meta.requiresAdmin && !authStore.user?.isAdmin) {
-    next('/dashboard')
+  } else if (to.meta.requiresAdmin && (!authStore.isAuthenticated || !authStore.user?.isAdmin)) {
+    next(authStore.isAuthenticated ? '/dashboard' : '/login')
   } else if (!to.meta.requiresAuth && authStore.isAuthenticated && (to.name === 'login' || to.name === 'register')) {
     next('/dashboard')
   } else {
