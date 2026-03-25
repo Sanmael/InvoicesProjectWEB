@@ -47,6 +47,16 @@ const formatCurrency = (value: number) => {
   }).format(value)
 }
 
+const toInputDate = (dateStr: string) => dateStr ? dateStr.split('T')[0] : ''
+const parseCivilDate = (dateStr: string) => {
+  const [year, month, day] = toInputDate(dateStr).split('-').map(Number)
+  return { year, month, day, sortKey: year * 10000 + month * 100 + day }
+}
+const formatCivilDate = (dateStr: string) => {
+  const { year, month, day } = parseCivilDate(dateStr)
+  return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`
+}
+
 const balanceClass = computed(() => {
   if (!summaryStore.summary) return ''
   return summaryStore.summary.balance >= 0 ? 'positive' : 'negative'
@@ -69,7 +79,7 @@ const groupedPendingDebts = computed<DashboardDebtItem[]>(() => {
 
       const debts = debtStore.debts
         .filter((d) => !d.isInstallment && d.installmentGroupId === groupId)
-        .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+        .sort((a, b) => parseCivilDate(a.dueDate).sortKey - parseCivilDate(b.dueDate).sortKey)
 
       if (debts.length === 0) continue
 
@@ -95,7 +105,7 @@ const groupedPendingReceivables = computed<DashboardReceivableItem[]>(() => {
 
       const receivables = receivableStore.receivables
         .filter((r) => r.isRecurring && r.recurrenceGroupId === groupId)
-        .sort((a, b) => new Date(a.expectedDate).getTime() - new Date(b.expectedDate).getTime())
+        .sort((a, b) => parseCivilDate(a.expectedDate).sortKey - parseCivilDate(b.expectedDate).sortKey)
 
       if (receivables.length === 0) continue
 
@@ -118,12 +128,12 @@ const filteredPendingDebts = computed<DashboardDebtItem[]>(() => {
   if (!year || !month) return groupedPendingDebts.value
   return groupedPendingDebts.value.filter((item) => {
     if (item.kind === 'single') {
-      const d = new Date(item.debt.dueDate)
-      return d.getFullYear() === year && d.getMonth() + 1 === month
+      const d = parseCivilDate(item.debt.dueDate)
+      return d.year === year && d.month === month
     }
     return item.debts.some((d) => {
-      const date = new Date(d.dueDate)
-      return date.getFullYear() === year && date.getMonth() + 1 === month
+      const date = parseCivilDate(d.dueDate)
+      return date.year === year && date.month === month
     })
   })
 })
@@ -133,12 +143,12 @@ const filteredPendingReceivables = computed<DashboardReceivableItem[]>(() => {
   if (!year || !month) return groupedPendingReceivables.value
   return groupedPendingReceivables.value.filter((item) => {
     if (item.kind === 'single') {
-      const d = new Date(item.receivable.expectedDate)
-      return d.getFullYear() === year && d.getMonth() + 1 === month
+      const d = parseCivilDate(item.receivable.expectedDate)
+      return d.year === year && d.month === month
     }
     return item.receivables.some((r) => {
-      const date = new Date(r.expectedDate)
-      return date.getFullYear() === year && date.getMonth() + 1 === month
+      const date = parseCivilDate(r.expectedDate)
+      return date.year === year && date.month === month
     })
   })
 })
@@ -229,7 +239,7 @@ const displayedReceivables = computed(() => {
                 <span v-if="item.kind === 'group'" class="item-badge">Recorrente ({{ item.debts.length }})</span>
               </span>
               <span class="item-date">
-                {{ new Date(item.kind === 'group' ? item.representative.dueDate : item.debt.dueDate).toLocaleDateString('pt-BR') }}
+                {{ formatCivilDate(item.kind === 'group' ? item.representative.dueDate : item.debt.dueDate) }}
               </span>
             </div>
             <span class="item-amount negative">
@@ -258,7 +268,7 @@ const displayedReceivables = computed(() => {
                 <span v-if="item.kind === 'group'" class="item-badge">Recorrente ({{ item.receivables.length }})</span>
               </span>
               <span class="item-date">
-                {{ new Date(item.kind === 'group' ? item.representative.expectedDate : item.receivable.expectedDate).toLocaleDateString('pt-BR') }}
+                {{ formatCivilDate(item.kind === 'group' ? item.representative.expectedDate : item.receivable.expectedDate) }}
               </span>
             </div>
             <span class="item-amount positive">

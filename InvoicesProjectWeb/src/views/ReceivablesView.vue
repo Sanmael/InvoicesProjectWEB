@@ -43,7 +43,14 @@ const formatCurrency = (value: number) => {
 }
 
 const toInputDate = (dateStr: string) => dateStr ? dateStr.split('T')[0] : ''
-const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('pt-BR')
+const parseCivilDate = (dateStr: string) => {
+  const [year, month, day] = toInputDate(dateStr).split('-').map(Number)
+  return { year, month, day, sortKey: year * 10000 + month * 100 + day }
+}
+const formatDate = (dateStr: string) => {
+  const { year, month, day } = parseCivilDate(dateStr)
+  return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`
+}
 
 type ReceivableListItem =
   | { kind: 'single'; item: Receivable }
@@ -63,7 +70,7 @@ const groupedReceivables = computed<ReceivableListItem[]>(() => {
 
       const items = list
         .filter((r) => r.isRecurring && r.recurrenceGroupId === groupId)
-        .sort((a, b) => new Date(a.expectedDate).getTime() - new Date(b.expectedDate).getTime())
+        .sort((a, b) => parseCivilDate(a.expectedDate).sortKey - parseCivilDate(b.expectedDate).sortKey)
 
       if (items.length === 0) {
         continue
@@ -88,12 +95,12 @@ const filteredGroupedReceivables = computed<ReceivableListItem[]>(() => {
   if (!year || !month) return groupedReceivables.value
   return groupedReceivables.value.filter((entry) => {
     if (entry.kind === 'single') {
-      const d = new Date(entry.item.expectedDate)
-      return d.getFullYear() === year && d.getMonth() + 1 === month
+      const d = parseCivilDate(entry.item.expectedDate)
+      return d.year === year && d.month === month
     }
     return entry.items.some((r) => {
-      const date = new Date(r.expectedDate)
-      return date.getFullYear() === year && date.getMonth() + 1 === month
+      const date = parseCivilDate(r.expectedDate)
+      return date.year === year && date.month === month
     })
   })
 })

@@ -53,7 +53,14 @@ const formatCurrency = (value: number) => {
 }
 
 const toInputDate = (dateStr: string) => dateStr ? dateStr.split('T')[0] : ''
-const formatDate = (dateStr: string) => new Date(dateStr).toLocaleDateString('pt-BR')
+const parseCivilDate = (dateStr: string) => {
+  const [year, month, day] = toInputDate(dateStr).split('-').map(Number)
+  return { year, month, day, sortKey: year * 10000 + month * 100 + day }
+}
+const formatDate = (dateStr: string) => {
+  const { year, month, day } = parseCivilDate(dateStr)
+  return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`
+}
 
 type DebtListItem =
   | { kind: 'single'; item: Debt }
@@ -73,7 +80,7 @@ const groupedDebts = computed<DebtListItem[]>(() => {
 
       const items = list
         .filter((d) => d.installmentGroupId === groupId)
-        .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+        .sort((a, b) => parseCivilDate(a.dueDate).sortKey - parseCivilDate(b.dueDate).sortKey)
 
       if (items.length === 0) {
         continue
@@ -101,12 +108,12 @@ const filteredGroupedDebts = computed<DebtListItem[]>(() => {
   if (!year || !month) return groupedDebts.value
   return groupedDebts.value.filter((entry) => {
     if (entry.kind === 'single') {
-      const d = new Date(entry.item.dueDate)
-      return d.getFullYear() === year && d.getMonth() + 1 === month
+      const d = parseCivilDate(entry.item.dueDate)
+      return d.year === year && d.month === month
     }
     return entry.items.some((d) => {
-      const date = new Date(d.dueDate)
-      return date.getFullYear() === year && date.getMonth() + 1 === month
+      const date = parseCivilDate(d.dueDate)
+      return date.year === year && date.month === month
     })
   })
 })

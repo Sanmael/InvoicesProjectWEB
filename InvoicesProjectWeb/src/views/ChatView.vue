@@ -59,7 +59,7 @@ function clearChat() {
     <header class="page-header">
       <div>
         <h1>💬 Kash Chat</h1>
-        <p>Crie débitos e recebíveis por conversa</p>
+        <p>Gerencie suas finanças por conversa</p>
       </div>
       <button v-if="messages.length > 0" @click="clearChat" class="btn-secondary">Limpar conversa</button>
     </header>
@@ -69,13 +69,16 @@ function clearChat() {
         <div v-if="messages.length === 0" class="chat-empty">
           <div class="chat-empty-icon">🤖</div>
           <h3>Olá! Sou o Kash.</h3>
-          <p>Posso te ajudar a criar débitos e recebíveis rapidamente. Experimente:</p>
+          <p>Posso te ajudar a gerenciar débitos, recebíveis, cartões e compras. Experimente:</p>
           <div class="suggestions">
             <button @click="input = 'Cria um débito de R$200 de conta de luz vencendo dia 15'" class="suggestion-chip">
               💡 Conta de luz R$200, dia 15
             </button>
-            <button @click="input = 'Recebível de salário R$5000 dia 5 do mês que vem'" class="suggestion-chip">
-              💡 Salário R$5000, dia 5
+            <button @click="input = 'Cria um débito recorrente de R$100 de ajuda familiar todo dia 5, por 12 meses'" class="suggestion-chip">
+              💡 Débito recorrente 12x
+            </button>
+            <button @click="input = 'Cadastra meu cartão Nubank final 1234, fecha dia 3, vence dia 10'" class="suggestion-chip">
+              💡 Cadastrar cartão
             </button>
             <button @click="input = 'Quais meus débitos pendentes?'" class="suggestion-chip">
               💡 Listar débitos pendentes
