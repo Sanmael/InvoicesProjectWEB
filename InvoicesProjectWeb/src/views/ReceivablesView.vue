@@ -42,9 +42,12 @@ const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
 }
 
-const toInputDate = (dateStr: string) => dateStr ? dateStr.split('T')[0] : ''
+const toInputDate = (dateStr: string) => dateStr ? (dateStr.split('T')[0] ?? '') : ''
 const parseCivilDate = (dateStr: string) => {
-  const [year, month, day] = toInputDate(dateStr).split('-').map(Number)
+  const parts = toInputDate(dateStr).split('-')
+  const year = Number(parts[0]) || 0
+  const month = Number(parts[1]) || 0
+  const day = Number(parts[2]) || 0
   return { year, month, day, sortKey: year * 10000 + month * 100 + day }
 }
 const formatDate = (dateStr: string) => {
