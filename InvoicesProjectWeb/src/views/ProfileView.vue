@@ -247,7 +247,7 @@ onMounted(() => {
             <div class="form-group checkbox-group full-width">
               <label class="toggle-row">
                 <input v-model="notificationForm.notifyUpcomingReceivables" type="checkbox" />
-                <span>Avisar recebíveis próximos</span>
+                <span>Avisar receitas próximas</span>
               </label>
               <input v-model.number="notificationForm.daysBeforeReceivableNotification" type="number" min="1" max="30" />
               <small>Dias antes da data esperada</small>

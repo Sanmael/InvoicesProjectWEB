@@ -43,6 +43,7 @@ export interface Debt {
   isPaid: boolean
   paidAt: string | null
   notes: string | null
+  category: string
   isInstallment: boolean
   totalInstallments: number | null
   installmentNumber: number | null
@@ -55,6 +56,7 @@ export interface CreateDebtDto {
   amount: number
   dueDate: string
   notes?: string
+  category?: string
 }
 
 export interface CreateInstallmentDebtDto {
@@ -63,6 +65,7 @@ export interface CreateInstallmentDebtDto {
   firstDueDate: string
   installments: number
   notes?: string
+  category?: string
 }
 
 export interface CreateRecurringDebtDto {
@@ -72,6 +75,7 @@ export interface CreateRecurringDebtDto {
   months: number
   startDate?: string
   notes?: string
+  category?: string
 }
 
 export interface UpdateDebtDto {
@@ -80,6 +84,7 @@ export interface UpdateDebtDto {
   dueDate?: string
   isPaid?: boolean
   notes?: string
+  category?: string
 }
 
 // Receivable types
@@ -166,6 +171,7 @@ export interface CardPurchase {
   currentInstallment: number
   isPaid: boolean
   notes: string | null
+  category: string
   createdAt: string
 }
 
@@ -176,6 +182,7 @@ export interface CreateCardPurchaseDto {
   purchaseDate: string
   installments: number
   notes?: string
+  category?: string
 }
 
 export interface UpdateCardPurchaseDto {
@@ -185,6 +192,7 @@ export interface UpdateCardPurchaseDto {
   installments?: number
   isPaid?: boolean
   notes?: string
+  category?: string
 }
 
 // Financial Summary

@@ -6,6 +6,12 @@ import { cardPurchaseService } from '@/services/cardPurchaseService'
 
 const cardStore = useCreditCardStore()
 
+const categories = [
+  'Alimentação', 'Moradia', 'Transporte', 'Saúde', 'Educação', 'Lazer',
+  'Vestuário', 'Assinaturas', 'Mercado', 'Pets', 'Presentes', 'Viagem',
+  'Tecnologia', 'Serviços', 'Família', 'Investimentos', 'Impostos', 'Outros',
+]
+
 const showCardModal = ref(false)
 const showPurchaseModal = ref(false)
 const showEditPurchaseModal = ref(false)
@@ -27,6 +33,7 @@ const purchaseFormData = ref<CreateCardPurchaseDto>({
   purchaseDate: '',
   installments: 1,
   notes: '',
+  category: 'Outros',
 })
 
 const editPurchaseForm = ref<UpdateCardPurchaseDto>({
@@ -35,6 +42,7 @@ const editPurchaseForm = ref<UpdateCardPurchaseDto>({
   purchaseDate: '',
   installments: 1,
   notes: '',
+  category: 'Outros',
 })
 
 onMounted(() => {
@@ -61,6 +69,7 @@ function openPurchaseModal(cardId: string) {
     purchaseDate: new Date().toISOString().split('T')[0] ?? '',
     installments: 1,
     notes: '',
+    category: 'Outros',
   }
   showPurchaseModal.value = true
 }
@@ -73,6 +82,7 @@ function openEditPurchaseModal(purchase: CardPurchase) {
     purchaseDate: toInputDate(purchase.purchaseDate),
     installments: purchase.installments,
     notes: purchase.notes ?? '',
+    category: purchase.category ?? 'Outros',
   }
   showEditPurchaseModal.value = true
 }
@@ -212,11 +222,14 @@ async function handleDeleteCard(id: string) {
         <li v-for="purchase in cardStore.currentCard.purchases" :key="purchase.id" class="purchase-item">
           <div class="purchase-info">
             <span class="purchase-description">{{ purchase.description }}</span>
-            <span class="purchase-date">
-              {{ new Date(purchase.purchaseDate).toLocaleDateString('pt-BR') }}
-              <span v-if="purchase.installments > 1">
-                ({{ purchase.currentInstallment }}/{{ purchase.installments }})
+            <span class="purchase-meta">
+              <span class="purchase-date">
+                {{ new Date(purchase.purchaseDate).toLocaleDateString('pt-BR') }}
+                <span v-if="purchase.installments > 1">
+                  ({{ purchase.currentInstallment }}/{{ purchase.installments }})
+                </span>
               </span>
+              <span v-if="purchase.category && purchase.category !== 'Outros'" class="badge badge-category">{{ purchase.category }}</span>
             </span>
           </div>
           <div class="purchase-right">
@@ -307,6 +320,12 @@ async function handleDeleteCard(id: string) {
             </div>
           </div>
           <div class="form-group">
+            <label>Categoria</label>
+            <select v-model="purchaseFormData.category">
+              <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+            </select>
+          </div>
+          <div class="form-group">
             <label>Observações</label>
             <textarea v-model="purchaseFormData.notes" rows="2"></textarea>
           </div>
@@ -343,6 +362,12 @@ async function handleDeleteCard(id: string) {
               <label>Parcelas</label>
               <input v-model.number="editPurchaseForm.installments" type="number" min="1" max="48" required />
             </div>
+          </div>
+          <div class="form-group">
+            <label>Categoria</label>
+            <select v-model="editPurchaseForm.category">
+              <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+            </select>
           </div>
           <div class="form-group">
             <label>Observações</label>
@@ -546,7 +571,9 @@ async function handleDeleteCard(id: string) {
 
 .purchase-info { display: flex; flex-direction: column; }
 .purchase-description { font-weight: 500; color: var(--text-primary); }
+.purchase-meta { display: flex; align-items: center; gap: 0.5rem; }
 .purchase-date { font-size: 0.85rem; color: var(--text-muted); }
+.badge-category { font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 999px; background: var(--color-secondary-bg, #e8e8e8); color: var(--text-secondary); }
 
 .purchase-right { display: flex; align-items: center; gap: 0.75rem; }
 .purchase-amount { font-weight: 600; color: var(--color-danger); }
@@ -632,7 +659,8 @@ async function handleDeleteCard(id: string) {
   color: var(--text-primary); 
 }
 .form-group input,
-.form-group textarea {
+.form-group textarea,
+.form-group select {
   width: 100%;
   padding: 0.75rem;
   border: 2px solid var(--input-border);
@@ -643,8 +671,17 @@ async function handleDeleteCard(id: string) {
   color: var(--text-primary);
   transition: border-color 0.2s ease;
 }
+.form-group select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2.5rem;
+}
 .form-group input:focus,
-.form-group textarea:focus { 
+.form-group textarea:focus,
+.form-group select:focus { 
   outline: none; 
   border-color: var(--color-primary); 
 }

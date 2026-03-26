@@ -69,19 +69,19 @@ function clearChat() {
         <div v-if="messages.length === 0" class="chat-empty">
           <div class="chat-empty-icon">🤖</div>
           <h3>Olá! Sou o Kash.</h3>
-          <p>Posso te ajudar a gerenciar débitos, recebíveis, cartões e compras. Experimente:</p>
+          <p>Posso te ajudar a gerenciar despesas, receitas, cartões e compras. Experimente:</p>
           <div class="suggestions">
-            <button @click="input = 'Cria um débito de R$200 de conta de luz vencendo dia 15'" class="suggestion-chip">
+            <button @click="input = 'Cria uma despesa de R$200 de conta de luz vencendo dia 15'" class="suggestion-chip">
               💡 Conta de luz R$200, dia 15
             </button>
-            <button @click="input = 'Cria um débito recorrente de R$100 de ajuda familiar todo dia 5, por 12 meses'" class="suggestion-chip">
-              💡 Débito recorrente 12x
+            <button @click="input = 'Cria uma despesa recorrente de R$100 de ajuda familiar todo dia 5, por 12 meses'" class="suggestion-chip">
+              💡 Despesa recorrente 12x
             </button>
             <button @click="input = 'Cadastra meu cartão Nubank final 1234, fecha dia 3, vence dia 10'" class="suggestion-chip">
               💡 Cadastrar cartão
             </button>
-            <button @click="input = 'Quais meus débitos pendentes?'" class="suggestion-chip">
-              💡 Listar débitos pendentes
+            <button @click="input = 'Quais minhas despesas pendentes?'" class="suggestion-chip">
+              💡 Listar despesas pendentes
             </button>
           </div>
         </div>
@@ -114,7 +114,7 @@ function clearChat() {
         <textarea
           v-model="input"
           @keydown="handleKeydown"
-          placeholder="Ex: cria débito de 150 reais, conta de internet, vence dia 20..."
+          placeholder="Ex: cria despesa de 150 reais, conta de internet, vence dia 20..."
           rows="1"
           :disabled="loading"
         ></textarea>

@@ -13,11 +13,18 @@ const expandedInstallmentGroupIds = ref<Set<string>>(new Set())
 const selectedMonth = ref('')
 const defaultStartMonth = new Date().toISOString().slice(0, 7)
 
+const categories = [
+  'Alimentação', 'Moradia', 'Transporte', 'Saúde', 'Educação', 'Lazer',
+  'Vestuário', 'Assinaturas', 'Mercado', 'Pets', 'Presentes', 'Viagem',
+  'Tecnologia', 'Serviços', 'Família', 'Investimentos', 'Impostos', 'Outros',
+]
+
 const simpleForm = ref<CreateDebtDto>({
   description: '',
   amount: 0,
   dueDate: '',
   notes: '',
+  category: 'Outros',
 })
 
 const installmentForm = ref<CreateInstallmentDebtDto>({
@@ -26,6 +33,7 @@ const installmentForm = ref<CreateInstallmentDebtDto>({
   firstDueDate: '',
   installments: 2,
   notes: '',
+  category: 'Outros',
 })
 
 const recurringForm = ref<CreateRecurringDebtDto & { startMonth: string }>({
@@ -35,6 +43,7 @@ const recurringForm = ref<CreateRecurringDebtDto & { startMonth: string }>({
   months: 12,
   startMonth: defaultStartMonth,
   notes: '',
+  category: 'Outros',
 })
 
 const editForm = ref<UpdateDebtDto>({
@@ -42,6 +51,7 @@ const editForm = ref<UpdateDebtDto>({
   amount: 0,
   dueDate: '',
   notes: '',
+  category: 'Outros',
 })
 
 onMounted(() => {
@@ -132,9 +142,9 @@ function toggleGroup(groupId: string) {
 
 function openModal() {
   mode.value = 'simple'
-  simpleForm.value = { description: '', amount: 0, dueDate: '', notes: '' }
-  installmentForm.value = { description: '', totalAmount: 0, firstDueDate: '', installments: 2, notes: '' }
-  recurringForm.value = { description: '', amount: 0, recurringDay: 5, months: 12, startMonth: defaultStartMonth, notes: '' }
+  simpleForm.value = { description: '', amount: 0, dueDate: '', notes: '', category: 'Outros' }
+  installmentForm.value = { description: '', totalAmount: 0, firstDueDate: '', installments: 2, notes: '', category: 'Outros' }
+  recurringForm.value = { description: '', amount: 0, recurringDay: 5, months: 12, startMonth: defaultStartMonth, notes: '', category: 'Outros' }
   showModal.value = true
 }
 
@@ -145,6 +155,7 @@ function openEditModal(debt: Debt) {
     amount: debt.amount,
     dueDate: toInputDate(debt.dueDate),
     notes: debt.notes ?? '',
+    category: debt.category ?? 'Outros',
   }
   showEditModal.value = true
 }
@@ -160,6 +171,7 @@ async function handleSubmit() {
       months: recurringForm.value.months,
       startDate: recurringForm.value.startMonth ? `${recurringForm.value.startMonth}-01` : undefined,
       notes: recurringForm.value.notes,
+      category: recurringForm.value.category,
     })
   } else {
     await debtStore.create(simpleForm.value)
@@ -179,13 +191,13 @@ async function handleMarkAsPaid(id: string) {
 }
 
 async function handleDelete(id: string) {
-  if (confirm('Tem certeza que deseja excluir este débito?')) {
+  if (confirm('Tem certeza que deseja excluir esta despesa?')) {
     await debtStore.remove(id)
   }
 }
 
 async function handleDeleteGroup(groupId: string) {
-  if (confirm('Cancelar todos os débitos não pagos deste lote?')) {
+  if (confirm('Cancelar todas as despesas não pagas deste lote?')) {
     await debtStore.removeGroup(groupId)
   }
 }
@@ -195,7 +207,7 @@ async function handleDeleteGroup(groupId: string) {
   <div class="debts-page">
     <header class="page-header">
       <div>
-        <h1>📉 Débitos</h1>
+        <h1>📉 Despesas</h1>
         <p>Gerencie suas contas a pagar</p>
       </div>
       <div class="header-actions">
@@ -206,7 +218,7 @@ async function handleDeleteGroup(groupId: string) {
               <input id="debt-month" v-model="selectedMonth" type="month" />
               <button v-if="selectedMonth" class="btn-clear-filter" @click="selectedMonth = ''" title="Limpar filtro">✕</button>
             </div>
-            <button @click="openModal" class="btn-primary">+ Novo Débito</button>
+            <button @click="openModal" class="btn-primary">+ Nova Despesa</button>
           </div>
         </div>
       </div>
@@ -219,12 +231,12 @@ async function handleDeleteGroup(groupId: string) {
     </div>
 
     <div v-else-if="debtStore.debts.length === 0" class="empty-state">
-      <p>Nenhum débito cadastrado</p>
-      <button @click="openModal" class="btn-primary">Criar primeiro débito</button>
+      <p>Nenhuma despesa cadastrada</p>
+      <button @click="openModal" class="btn-primary">Criar primeira despesa</button>
     </div>
 
     <div v-else-if="filteredGroupedDebts.length === 0" class="empty-state">
-      <p>Nenhum débito encontrado para este mês</p>
+      <p>Nenhuma despesa encontrada para este mês</p>
     </div>
 
     <div v-else class="debts-list">
@@ -251,6 +263,9 @@ async function handleDeleteGroup(groupId: string) {
               </span>
               <span v-else-if="entry.kind === 'single' && entry.item.installmentGroupId" class="badge badge-recurring">
                 Recorrente
+              </span>
+              <span class="badge badge-category">
+                {{ entry.kind === 'single' ? (entry.item.category ?? 'Outros') : (entry.representative.category ?? 'Outros') }}
               </span>
             </div>
             <p class="debt-date" v-if="entry.kind === 'single'">
@@ -393,16 +408,16 @@ async function handleDeleteGroup(groupId: string) {
       </div>
     </div>
 
-    <!-- Modal: Novo Débito -->
+    <!-- Modal: Nova Despesa -->
     <div v-if="showModal" class="modal-overlay">
       <div class="modal">
         <div class="modal-header">
-          <h2>Novo Débito</h2>
+          <h2>Nova Despesa</h2>
           <button type="button" class="close-btn" @click="showModal = false">✕</button>
         </div>
 
         <div class="mode-selector">
-          <button :class="['mode-btn', { active: mode === 'simple' }]" type="button" @click="mode = 'simple'">Débito simples</button>
+          <button :class="['mode-btn', { active: mode === 'simple' }]" type="button" @click="mode = 'simple'">Despesa simples</button>
           <button :class="['mode-btn', { active: mode === 'installment' }]" type="button" @click="mode = 'installment'">Parcelado</button>
           <button :class="['mode-btn', { active: mode === 'recurring' }]" type="button" @click="mode = 'recurring'">Recorrente</button>
         </div>
@@ -419,6 +434,12 @@ async function handleDeleteGroup(groupId: string) {
           <div class="form-group">
             <label>Data de Vencimento</label>
             <input v-model="simpleForm.dueDate" type="date" required />
+          </div>
+          <div class="form-group">
+            <label>Categoria</label>
+            <select v-model="simpleForm.category">
+              <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+            </select>
           </div>
           <div class="form-group">
             <label>Observações</label>
@@ -449,6 +470,12 @@ async function handleDeleteGroup(groupId: string) {
           </div>
           <div v-if="installmentForm.totalAmount > 0 && installmentForm.installments > 0" class="installment-preview">
             Valor por parcela: <strong>{{ formatCurrency(installmentForm.totalAmount / installmentForm.installments) }}</strong>
+          </div>
+          <div class="form-group">
+            <label>Categoria</label>
+            <select v-model="installmentForm.category">
+              <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+            </select>
           </div>
           <div class="form-group">
             <label>Observações</label>
@@ -482,9 +509,15 @@ async function handleDeleteGroup(groupId: string) {
             <input v-model.number="recurringForm.months" type="number" min="1" max="60" required />
           </div>
           <div class="recurring-preview">
-            Serão gerados <strong>{{ recurringForm.months }}</strong> débitos mensais de
+            Serão geradas <strong>{{ recurringForm.months }}</strong> despesas mensais de
             <strong>{{ formatCurrency(recurringForm.amount) }}</strong>, todo dia
             <strong>{{ recurringForm.recurringDay }}</strong>.
+          </div>
+          <div class="form-group">
+            <label>Categoria</label>
+            <select v-model="recurringForm.category">
+              <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+            </select>
           </div>
           <div class="form-group">
             <label>Observações</label>
@@ -498,11 +531,11 @@ async function handleDeleteGroup(groupId: string) {
       </div>
     </div>
 
-    <!-- Modal: Editar Débito -->
+    <!-- Modal: Editar Despesa -->
     <div v-if="showEditModal" class="modal-overlay">
       <div class="modal">
         <div class="modal-header">
-          <h2>Editar Débito</h2>
+          <h2>Editar Despesa</h2>
           <button type="button" class="close-btn" @click="showEditModal = false">✕</button>
         </div>
         <form @submit.prevent="handleEditSubmit">
@@ -517,6 +550,12 @@ async function handleDeleteGroup(groupId: string) {
           <div class="form-group">
             <label>Data de Vencimento</label>
             <input v-model="editForm.dueDate" type="date" required />
+          </div>
+          <div class="form-group">
+            <label>Categoria</label>
+            <select v-model="editForm.category">
+              <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+            </select>
           </div>
           <div class="form-group">
             <label>Observações</label>
@@ -621,6 +660,7 @@ async function handleDeleteGroup(groupId: string) {
 .badge { font-size: 0.75rem; font-weight: 600; padding: 0.2rem 0.6rem; border-radius: 999px; }
 .badge-installment { background: var(--color-warning-bg); color: var(--color-warning); }
 .badge-recurring { background: var(--color-info-bg); color: var(--color-info); }
+.badge-category { background: var(--color-secondary-bg, #e8e8e8); color: var(--text-secondary); }
 
 .debt-date { color: var(--text-secondary); font-size: 0.9rem; margin: 0.25rem 0 0; }
 .debt-notes { color: var(--text-muted); font-size: 0.85rem; margin: 0.5rem 0 0; }
@@ -807,7 +847,8 @@ async function handleDeleteGroup(groupId: string) {
   color: var(--text-primary); 
 }
 .form-group input,
-.form-group textarea {
+.form-group textarea,
+.form-group select {
   width: 100%;
   padding: 0.75rem;
   border: 2px solid var(--input-border);
@@ -818,8 +859,17 @@ async function handleDeleteGroup(groupId: string) {
   color: var(--text-primary);
   transition: border-color 0.2s ease;
 }
+.form-group select {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2.5rem;
+}
 .form-group input:focus,
-.form-group textarea:focus { 
+.form-group textarea:focus,
+.form-group select:focus { 
   outline: none; 
   border-color: var(--color-primary); 
 }

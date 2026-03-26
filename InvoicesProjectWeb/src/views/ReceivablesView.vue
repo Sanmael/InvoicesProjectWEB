@@ -156,7 +156,7 @@ async function handleMarkAsReceived(id: string) {
 }
 
 async function handleDelete(id: string) {
-  if (confirm('Tem certeza que deseja excluir este recebível?')) {
+  if (confirm('Tem certeza que deseja excluir esta receita?')) {
     await receivableStore.remove(id)
   }
 }
@@ -172,7 +172,7 @@ async function handleDeleteGroup(groupId: string) {
   <div class="receivables-page">
     <header class="page-header">
       <div>
-        <h1>📈 Recebíveis</h1>
+        <h1>📈 Receitas</h1>
         <p>Gerencie seus valores a receber</p>
       </div>
       <div class="header-actions">
@@ -183,7 +183,7 @@ async function handleDeleteGroup(groupId: string) {
               <input id="receivable-month" v-model="selectedMonth" type="month" />
               <button v-if="selectedMonth" class="btn-clear-filter" @click="selectedMonth = ''" title="Limpar filtro">✕</button>
             </div>
-            <button @click="openModal" class="btn-primary">+ Novo Recebível</button>
+            <button @click="openModal" class="btn-primary">+ Nova Receita</button>
           </div>
         </div>
       </div>
@@ -196,12 +196,12 @@ async function handleDeleteGroup(groupId: string) {
     </div>
 
     <div v-else-if="receivableStore.receivables.length === 0" class="empty-state">
-      <p>Nenhum recebível cadastrado</p>
-      <button @click="openModal" class="btn-primary">Criar primeiro Recebível</button>
+      <p>Nenhuma receita cadastrada</p>
+      <button @click="openModal" class="btn-primary">Criar primeira receita</button>
     </div>
 
     <div v-else-if="filteredGroupedReceivables.length === 0" class="empty-state">
-      <p>Nenhum recebível encontrado para este mês</p>
+      <p>Nenhuma receita encontrada para este mês</p>
     </div>
 
     <div v-else class="receivables-list">
@@ -345,11 +345,11 @@ async function handleDeleteGroup(groupId: string) {
       </div>
     </div>
 
-    <!-- Modal: Novo Recebível -->
+    <!-- Modal: Nova Receita -->
     <div v-if="showModal" class="modal-overlay">
       <div class="modal">
         <div class="modal-header">
-          <h2>Novo Recebível</h2>
+          <h2>Nova Receita</h2>
           <button type="button" class="close-btn" @click="showModal = false">✕</button>
         </div>
 
@@ -416,11 +416,11 @@ async function handleDeleteGroup(groupId: string) {
       </div>
     </div>
 
-    <!-- Modal: Editar Recebível -->
+    <!-- Modal: Editar Receita -->
     <div v-if="showEditModal" class="modal-overlay">
       <div class="modal">
         <div class="modal-header">
-          <h2>Editar Recebível</h2>
+          <h2>Editar Receita</h2>
           <button type="button" class="close-btn" @click="showEditModal = false">✕</button>
         </div>
         <form @submit.prevent="handleEditSubmit">

@@ -1,14 +1,33 @@
 <script setup lang="ts">
 import { onMounted, computed, ref, watch } from 'vue'
+import { Line } from 'vue-chartjs'
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+} from 'chart.js'
 import { useFinancialSummaryStore } from '@/stores/financialSummary'
 import { useDebtStore } from '@/stores/debt'
 import { useReceivableStore } from '@/stores/receivable'
-import type { Debt, Receivable } from '@/types'
+import { useCreditCardStore } from '@/stores/creditCard'
+import type { Debt, Receivable, CreditCard } from '@/types'
+
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler)
 
 const summaryStore = useFinancialSummaryStore()
 const debtStore = useDebtStore()
 const receivableStore = useReceivableStore()
+const cardStore = useCreditCardStore()
 const selectedMonth = ref(new Date().toISOString().slice(0, 7))
+
+// Projection range
+const projectionMonths = ref<6 | 12>(12)
 
 type DashboardDebtItem =
   | { kind: 'single'; debt: Debt }
@@ -27,8 +46,9 @@ onMounted(async () => {
   const month = Number.isFinite(parsedMonth) ? parsedMonth : now.getMonth() + 1
   await Promise.all([
     summaryStore.fetchByMonth(year, month),
-    debtStore.fetchPending(),
-    receivableStore.fetchPending(),
+    debtStore.fetchAll(),
+    receivableStore.fetchAll(),
+    cardStore.fetchAll(),
   ])
 })
 
@@ -41,15 +61,15 @@ watch(selectedMonth, async (value) => {
 })
 
 const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-  }).format(value)
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
 }
 
-const toInputDate = (dateStr: string) => dateStr ? dateStr.split('T')[0] : ''
+const toInputDate = (dateStr: string) => dateStr ? (dateStr.split('T')[0] ?? '') : ''
 const parseCivilDate = (dateStr: string) => {
-  const [year, month, day] = toInputDate(dateStr).split('-').map(Number)
+  const parts = toInputDate(dateStr).split('-')
+  const year = Number(parts[0]) || 0
+  const month = Number(parts[1]) || 0
+  const day = Number(parts[2]) || 0
   return { year, month, day, sortKey: year * 10000 + month * 100 + day }
 }
 const formatCivilDate = (dateStr: string) => {
@@ -68,21 +88,264 @@ const monthName = computed(() => {
   return date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
 })
 
+// ========== Cash Flow Projection ==========
+
+interface MonthProjection {
+  label: string
+  year: number
+  month: number
+  income: number
+  expenses: number
+  cardExpenses: number
+  balance: number
+  cumulativeBalance: number
+}
+
+const cashFlowProjection = computed<MonthProjection[]>(() => {
+  const now = new Date()
+  const months: MonthProjection[] = []
+  let cumulative = 0
+
+  for (let i = 0; i < projectionMonths.value; i++) {
+    const date = new Date(now.getFullYear(), now.getMonth() + i, 1)
+    const y = date.getFullYear()
+    const m = date.getMonth() + 1
+
+    // Sum receivables for this month
+    const income = receivableStore.receivables
+      .filter((r) => !r.isReceived || i === 0)
+      .filter((r) => {
+        const d = parseCivilDate(r.expectedDate)
+        return d.year === y && d.month === m
+      })
+      .reduce((sum, r) => sum + r.amount, 0)
+
+    // Sum debts for this month
+    const expenses = debtStore.debts
+      .filter((d) => !d.isPaid || i === 0)
+      .filter((d) => {
+        const dd = parseCivilDate(d.dueDate)
+        return dd.year === y && dd.month === m
+      })
+      .reduce((sum, d) => sum + d.amount, 0)
+
+    // Sum card purchases for this month (using totalPending per card spread by closing day)
+    const cardExpenses = cardStore.cards.reduce((sum, card) => {
+      return sum + (card.totalPending / Math.max(projectionMonths.value / 2, 1))
+    }, 0)
+
+    // Only count card expenses for months where there are active cards
+    const actualCardExpenses = i < 6 ? cardExpenses : 0
+
+    const balance = income - expenses - actualCardExpenses
+    cumulative += balance
+
+    const monthLabel = date.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })
+
+    months.push({
+      label: monthLabel,
+      year: y,
+      month: m,
+      income,
+      expenses,
+      cardExpenses: actualCardExpenses,
+      balance,
+      cumulativeBalance: cumulative,
+    })
+  }
+
+  return months
+})
+
+const chartData = computed(() => {
+  const data = cashFlowProjection.value
+  const balances = data.map((d) => d.cumulativeBalance)
+
+  return {
+    labels: data.map((d) => d.label),
+    datasets: [
+      {
+        label: 'Saldo Projetado',
+        data: balances,
+        borderColor: '#818cf8',
+        backgroundColor: (ctx: any) => {
+          const chart = ctx.chart
+          const { ctx: canvasCtx, chartArea } = chart
+          if (!chartArea) return 'rgba(129, 140, 248, 0.1)'
+          const gradient = canvasCtx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom)
+          gradient.addColorStop(0, 'rgba(129, 140, 248, 0.3)')
+          gradient.addColorStop(1, 'rgba(129, 140, 248, 0.02)')
+          return gradient
+        },
+        fill: true,
+        tension: 0.4,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        pointBackgroundColor: balances.map((v) => (v >= 0 ? '#818cf8' : '#f87171')),
+        pointBorderColor: balances.map((v) => (v >= 0 ? '#818cf8' : '#f87171')),
+        segment: {
+          borderColor: (ctx: any) => {
+            const currentVal = ctx.p0.parsed.y
+            const nextVal = ctx.p1.parsed.y
+            return currentVal < 0 || nextVal < 0 ? '#f87171' : '#818cf8'
+          },
+        },
+      },
+      {
+        label: 'Receitas',
+        data: data.map((d) => d.income),
+        borderColor: '#34d399',
+        backgroundColor: 'transparent',
+        borderDash: [5, 5],
+        tension: 0.4,
+        pointRadius: 2,
+        pointHoverRadius: 5,
+      },
+      {
+        label: 'Despesas',
+        data: data.map((d) => d.expenses + d.cardExpenses),
+        borderColor: '#f87171',
+        backgroundColor: 'transparent',
+        borderDash: [5, 5],
+        tension: 0.4,
+        pointRadius: 2,
+        pointHoverRadius: 5,
+      },
+    ],
+  }
+})
+
+const chartOptions = computed(() => ({
+  responsive: true,
+  maintainAspectRatio: false,
+  interaction: { mode: 'index' as const, intersect: false },
+  plugins: {
+    legend: {
+      display: true,
+      position: 'top' as const,
+      labels: {
+        color: 'rgb(148, 163, 184)',
+        usePointStyle: true,
+        padding: 20,
+        font: { size: 12 },
+      },
+    },
+    tooltip: {
+      backgroundColor: 'rgba(15, 23, 42, 0.95)',
+      titleColor: '#f1f5f9',
+      bodyColor: '#cbd5e1',
+      borderColor: '#334155',
+      borderWidth: 1,
+      padding: 12,
+      callbacks: {
+        label: (ctx: any) => `${ctx.dataset.label}: ${formatCurrency(ctx.parsed.y)}`,
+      },
+    },
+  },
+  scales: {
+    x: {
+      grid: { color: 'rgba(51, 65, 85, 0.3)' },
+      ticks: { color: 'rgb(148, 163, 184)', font: { size: 11 } },
+    },
+    y: {
+      grid: { color: 'rgba(51, 65, 85, 0.3)' },
+      ticks: {
+        color: 'rgb(148, 163, 184)',
+        font: { size: 11 },
+        callback: (value: any) => formatCurrency(value),
+      },
+    },
+  },
+}))
+
+// ========== AI Insights ==========
+
+const aiInsights = computed(() => {
+  const insights: { icon: string; type: 'warning' | 'danger' | 'success' | 'info'; text: string }[] = []
+  const proj = cashFlowProjection.value
+
+  // Check for negative balance months
+  const negativeMonths = proj.filter((m) => m.cumulativeBalance < 0)
+  if (negativeMonths.length > 0) {
+    const first = negativeMonths[0]!
+    insights.push({
+      icon: '⚠️',
+      type: 'danger',
+      text: `Atenção! Seu saldo ficará negativo em ${first.label} (${formatCurrency(first.cumulativeBalance)}). Considere adiar alguma despesa ou buscar receita extra.`,
+    })
+  }
+
+  // High expense months
+  const avgExpense = proj.reduce((s, m) => s + m.expenses, 0) / proj.length
+  const highExpenseMonths = proj.filter((m) => m.expenses > avgExpense * 1.5 && m.expenses > 0)
+  if (highExpenseMonths.length > 0) {
+    const m = highExpenseMonths[0]!
+    insights.push({
+      icon: '📊',
+      type: 'warning',
+      text: `${m.label} terá despesas ${Math.round((m.expenses / avgExpense - 1) * 100)}% acima da média (${formatCurrency(m.expenses)}).`,
+    })
+  }
+
+  // Months with no income
+  const noIncomeMonths = proj.slice(0, 6).filter((m) => m.income === 0)
+  if (noIncomeMonths.length > 2) {
+    insights.push({
+      icon: '💡',
+      type: 'info',
+      text: `Você tem ${noIncomeMonths.length} meses sem receitas previstas nos próximos 6 meses. Cadastre suas receitas recorrentes para uma projeção mais precisa.`,
+    })
+  }
+
+  // Good balance
+  const allPositive = proj.every((m) => m.cumulativeBalance >= 0)
+  if (allPositive && proj.length > 0) {
+    insights.push({
+      icon: '✅',
+      type: 'success',
+      text: `Ótima notícia! Seu saldo se mantém positivo nos próximos ${projectionMonths.value} meses. Continue assim!`,
+    })
+  }
+
+  // Card expenses info
+  const totalCardPending = cardStore.cards.reduce((s, c) => s + c.totalPending, 0)
+  if (totalCardPending > 0) {
+    insights.push({
+      icon: '💳',
+      type: 'info',
+      text: `Você tem ${formatCurrency(totalCardPending)} em compras pendentes nos cartões.`,
+    })
+  }
+
+  // If no insights, give a default
+  if (insights.length === 0) {
+    insights.push({
+      icon: '🤖',
+      type: 'info',
+      text: 'Cadastre mais despesas e receitas para que eu possa gerar projeções mais precisas.',
+    })
+  }
+
+  return insights
+})
+
+// ========== Pending Items (existing logic) ==========
+
 const groupedPendingDebts = computed<DashboardDebtItem[]>(() => {
   const seen = new Set<string>()
   const result: DashboardDebtItem[] = []
+  const pendingDebts = debtStore.debts.filter((d) => !d.isPaid)
 
-  for (const debt of debtStore.debts) {
+  for (const debt of pendingDebts) {
     if (!debt.isInstallment && debt.installmentGroupId) {
       const groupId = debt.installmentGroupId
       if (seen.has(groupId)) continue
 
-      const debts = debtStore.debts
+      const debts = pendingDebts
         .filter((d) => !d.isInstallment && d.installmentGroupId === groupId)
         .sort((a, b) => parseCivilDate(a.dueDate).sortKey - parseCivilDate(b.dueDate).sortKey)
 
       if (debts.length === 0) continue
-
       result.push({ kind: 'group', groupId, debts, representative: debts[0] as Debt })
       seen.add(groupId)
       continue
@@ -97,18 +360,18 @@ const groupedPendingDebts = computed<DashboardDebtItem[]>(() => {
 const groupedPendingReceivables = computed<DashboardReceivableItem[]>(() => {
   const seen = new Set<string>()
   const result: DashboardReceivableItem[] = []
+  const pendingReceivables = receivableStore.receivables.filter((r) => !r.isReceived)
 
-  for (const receivable of receivableStore.receivables) {
+  for (const receivable of pendingReceivables) {
     if (receivable.isRecurring && receivable.recurrenceGroupId) {
       const groupId = receivable.recurrenceGroupId
       if (seen.has(groupId)) continue
 
-      const receivables = receivableStore.receivables
+      const receivables = pendingReceivables
         .filter((r) => r.isRecurring && r.recurrenceGroupId === groupId)
         .sort((a, b) => parseCivilDate(a.expectedDate).sortKey - parseCivilDate(b.expectedDate).sortKey)
 
       if (receivables.length === 0) continue
-
       result.push({ kind: 'group', groupId, receivables, representative: receivables[0] as Receivable })
       seen.add(groupId)
       continue
@@ -187,101 +450,141 @@ const displayedReceivables = computed(() => {
       {{ summaryStore.error }}
     </div>
 
-    <!-- Summary Cards -->
-    <div v-else-if="summaryStore.summary" class="summary-grid">
-      <div class="summary-card balance" :class="balanceClass">
-        <div class="card-icon">💰</div>
-        <div class="card-content">
-          <h3>Saldo do Mês</h3>
-          <p class="amount">{{ formatCurrency(summaryStore.summary.balance) }}</p>
+    <template v-else-if="summaryStore.summary">
+      <!-- Summary Cards -->
+      <div class="summary-grid">
+        <div class="summary-card balance" :class="balanceClass">
+          <div class="card-icon">💰</div>
+          <div class="card-content">
+            <h3>Saldo do Mês</h3>
+            <p class="amount">{{ formatCurrency(summaryStore.summary.balance) }}</p>
+          </div>
+        </div>
+
+        <div class="summary-card receivables">
+          <div class="card-icon">📈</div>
+          <div class="card-content">
+            <h3>Receitas</h3>
+            <p class="amount">{{ formatCurrency(summaryStore.summary.totalReceivables) }}</p>
+          </div>
+        </div>
+
+        <div class="summary-card debts">
+          <div class="card-icon">📉</div>
+          <div class="card-content">
+            <h3>Despesas</h3>
+            <p class="amount">{{ formatCurrency(summaryStore.summary.totalDebts) }}</p>
+          </div>
+        </div>
+
+        <div class="summary-card cards">
+          <div class="card-icon">💳</div>
+          <div class="card-content">
+            <h3>Cartões</h3>
+            <p class="amount">{{ formatCurrency(summaryStore.summary.totalCardPurchases) }}</p>
+          </div>
         </div>
       </div>
 
-      <div class="summary-card receivables">
-        <div class="card-icon">📈</div>
-        <div class="card-content">
-          <h3>A Receber</h3>
-          <p class="amount">{{ formatCurrency(summaryStore.summary.totalReceivables) }}</p>
+      <!-- Cash Flow Chart -->
+      <div class="chart-section">
+        <div class="chart-header">
+          <h2>📊 Fluxo de Caixa Projetado</h2>
+          <div class="chart-controls">
+            <button
+              :class="['chart-range-btn', { active: projectionMonths === 6 }]"
+              @click="projectionMonths = 6"
+            >6 meses</button>
+            <button
+              :class="['chart-range-btn', { active: projectionMonths === 12 }]"
+              @click="projectionMonths = 12"
+            >12 meses</button>
+          </div>
+        </div>
+        <div class="chart-container">
+          <Line :data="chartData" :options="chartOptions" />
         </div>
       </div>
 
-      <div class="summary-card debts">
-        <div class="card-icon">📉</div>
-        <div class="card-content">
-          <h3>Débitos</h3>
-          <p class="amount">{{ formatCurrency(summaryStore.summary.totalDebts) }}</p>
-        </div>
-      </div>
-
-      <div class="summary-card cards">
-        <div class="card-icon">💳</div>
-        <div class="card-content">
-          <h3>Cartões</h3>
-          <p class="amount">{{ formatCurrency(summaryStore.summary.totalCardPurchases) }}</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- Recent Items -->
-    <div class="recent-section">
-      <div class="recent-card">
-        <h2>📉 Débitos Pendentes</h2>
-        <div v-if="debtStore.loading" class="loading-small">Carregando...</div>
-        <ul v-else-if="filteredPendingDebts.length > 0" class="item-list">
-          <li
-            v-for="item in displayedDebts"
-            :key="item.kind === 'group' ? `group-${item.groupId}` : item.debt.id"
-            class="item"
-          >
-            <div class="item-info">
-              <span class="item-description">
-                {{ item.kind === 'group' ? item.representative.description : item.debt.description }}
-                <span v-if="item.kind === 'group'" class="item-badge">Recorrente ({{ item.debts.length }})</span>
-              </span>
-              <span class="item-date">
-                {{ formatCivilDate(item.kind === 'group' ? item.representative.dueDate : item.debt.dueDate) }}
-              </span>
+      <!-- Insights + Pending Items -->
+      <div class="bottom-grid">
+        <!-- AI Insights -->
+        <div class="insights-card">
+          <h2>🤖 Insights da Kash</h2>
+          <div class="insights-list">
+            <div
+              v-for="(insight, idx) in aiInsights"
+              :key="idx"
+              class="insight-item"
+              :class="'insight-' + insight.type"
+            >
+              <span class="insight-icon">{{ insight.icon }}</span>
+              <p>{{ insight.text }}</p>
             </div>
-            <span class="item-amount negative">
-              {{ formatCurrency(item.kind === 'group' ? item.representative.amount : item.debt.amount) }}
-            </span>
-          </li>
-        </ul>
-        <p v-else class="empty-message">Nenhum débito pendente neste mês 🎉</p>
-        <button v-if="filteredPendingDebts.length > 5" class="view-all-btn" @click="showAllDebts = !showAllDebts">
-          {{ showAllDebts ? 'Ver menos ↑' : `Ver todos (${filteredPendingDebts.length}) ↓` }}
-        </button>
-      </div>
+          </div>
+        </div>
 
-      <div class="recent-card">
-        <h2>📈 Recebíveis Pendentes</h2>
-        <div v-if="receivableStore.loading" class="loading-small">Carregando...</div>
-        <ul v-else-if="filteredPendingReceivables.length > 0" class="item-list">
-          <li
-            v-for="item in displayedReceivables"
-            :key="item.kind === 'group' ? `group-${item.groupId}` : item.receivable.id"
-            class="item"
-          >
-            <div class="item-info">
-              <span class="item-description">
-                {{ item.kind === 'group' ? item.representative.description : item.receivable.description }}
-                <span v-if="item.kind === 'group'" class="item-badge">Recorrente ({{ item.receivables.length }})</span>
+        <!-- Pending Debts -->
+        <div class="recent-card">
+          <h2>📉 Despesas Pendentes</h2>
+          <div v-if="debtStore.loading" class="loading-small">Carregando...</div>
+          <ul v-else-if="filteredPendingDebts.length > 0" class="item-list">
+            <li
+              v-for="item in displayedDebts"
+              :key="item.kind === 'group' ? `group-${item.groupId}` : item.debt.id"
+              class="item"
+            >
+              <div class="item-info">
+                <span class="item-description">
+                  {{ item.kind === 'group' ? item.representative.description : item.debt.description }}
+                  <span v-if="item.kind === 'group'" class="item-badge">Recorrente ({{ item.debts.length }})</span>
+                </span>
+                <span class="item-date">
+                  {{ formatCivilDate(item.kind === 'group' ? item.representative.dueDate : item.debt.dueDate) }}
+                </span>
+              </div>
+              <span class="item-amount negative">
+                {{ formatCurrency(item.kind === 'group' ? item.representative.amount : item.debt.amount) }}
               </span>
-              <span class="item-date">
-                {{ formatCivilDate(item.kind === 'group' ? item.representative.expectedDate : item.receivable.expectedDate) }}
+            </li>
+          </ul>
+          <p v-else class="empty-message">Nenhuma despesa pendente neste mês 🎉</p>
+          <button v-if="filteredPendingDebts.length > 5" class="view-all-btn" @click="showAllDebts = !showAllDebts">
+            {{ showAllDebts ? 'Ver menos ↑' : `Ver todos (${filteredPendingDebts.length}) ↓` }}
+          </button>
+        </div>
+
+        <!-- Pending Receivables -->
+        <div class="recent-card">
+          <h2>📈 Receitas Pendentes</h2>
+          <div v-if="receivableStore.loading" class="loading-small">Carregando...</div>
+          <ul v-else-if="filteredPendingReceivables.length > 0" class="item-list">
+            <li
+              v-for="item in displayedReceivables"
+              :key="item.kind === 'group' ? `group-${item.groupId}` : item.receivable.id"
+              class="item"
+            >
+              <div class="item-info">
+                <span class="item-description">
+                  {{ item.kind === 'group' ? item.representative.description : item.receivable.description }}
+                  <span v-if="item.kind === 'group'" class="item-badge">Recorrente ({{ item.receivables.length }})</span>
+                </span>
+                <span class="item-date">
+                  {{ formatCivilDate(item.kind === 'group' ? item.representative.expectedDate : item.receivable.expectedDate) }}
+                </span>
+              </div>
+              <span class="item-amount positive">
+                {{ formatCurrency(item.kind === 'group' ? item.representative.amount : item.receivable.amount) }}
               </span>
-            </div>
-            <span class="item-amount positive">
-              {{ formatCurrency(item.kind === 'group' ? item.representative.amount : item.receivable.amount) }}
-            </span>
-          </li>
-        </ul>
-        <p v-else class="empty-message">Nenhum recebível pendente neste mês</p>
-        <button v-if="filteredPendingReceivables.length > 5" class="view-all-btn" @click="showAllReceivables = !showAllReceivables">
-          {{ showAllReceivables ? 'Ver menos ↑' : `Ver todos (${filteredPendingReceivables.length}) ↓` }}
-        </button>
+            </li>
+          </ul>
+          <p v-else class="empty-message">Nenhuma receita pendente neste mês</p>
+          <button v-if="filteredPendingReceivables.length > 5" class="view-all-btn" @click="showAllReceivables = !showAllReceivables">
+            {{ showAllReceivables ? 'Ver menos ↑' : `Ver todos (${filteredPendingReceivables.length}) ↓` }}
+          </button>
+        </div>
       </div>
-    </div>
+    </template>
   </div>
 </template>
 
@@ -335,17 +638,18 @@ const displayedReceivables = computed(() => {
   color: var(--text-secondary);
 }
 
+/* ===== Summary Cards ===== */
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
   margin-bottom: 2rem;
 }
 
 .summary-card {
   background: var(--card-bg);
   border-radius: 16px;
-  padding: 1.5rem;
+  padding: 1.25rem;
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -361,30 +665,149 @@ const displayedReceivables = computed(() => {
   background: linear-gradient(135deg, var(--color-danger-bg) 0%, var(--color-danger-bg) 100%);
 }
 
-.card-icon {
-  font-size: 2.5rem;
-}
+.card-icon { font-size: 2.2rem; }
 
 .card-content h3 {
-  margin: 0 0 0.25rem;
-  font-size: 0.9rem;
+  margin: 0 0 0.2rem;
+  font-size: 0.85rem;
   color: var(--text-secondary);
   font-weight: 500;
 }
 
 .card-content .amount {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.35rem;
   font-weight: 700;
   color: var(--text-primary);
 }
 
-.recent-section {
+/* ===== Chart Section ===== */
+.chart-section {
+  background: var(--card-bg);
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.chart-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+}
+
+.chart-controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.chart-range-btn {
+  padding: 0.4rem 1rem;
+  border: 1px solid var(--input-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chart-range-btn.active {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.chart-range-btn:hover:not(.active) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.chart-container {
+  height: 320px;
+  position: relative;
+}
+
+/* ===== Bottom Grid ===== */
+.bottom-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 1.5rem;
 }
 
+/* ===== Insights Card ===== */
+.insights-card {
+  background: var(--card-bg);
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.insights-card h2 {
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+}
+
+.insights-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.insight-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border-radius: var(--border-radius-lg);
+  border-left: 3px solid transparent;
+}
+
+.insight-item p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.insight-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.insight-danger {
+  background: var(--color-danger-bg);
+  border-left-color: var(--color-danger);
+}
+
+.insight-warning {
+  background: var(--color-warning-bg);
+  border-left-color: var(--color-warning);
+}
+
+.insight-success {
+  background: var(--color-success-bg);
+  border-left-color: var(--color-success);
+}
+
+.insight-info {
+  background: var(--color-info-bg);
+  border-left-color: var(--color-info);
+}
+
+/* ===== Recent Cards ===== */
 .recent-card {
   background: var(--card-bg);
   border-radius: 16px;
@@ -443,17 +866,9 @@ const displayedReceivables = computed(() => {
   color: var(--text-muted);
 }
 
-.item-amount {
-  font-weight: 600;
-}
-
-.item-amount.positive {
-  color: var(--color-success);
-}
-
-.item-amount.negative {
-  color: var(--color-danger);
-}
+.item-amount { font-weight: 600; }
+.item-amount.positive { color: var(--color-success); }
+.item-amount.negative { color: var(--color-danger); }
 
 .empty-message {
   color: var(--text-muted);
@@ -487,7 +902,7 @@ const displayedReceivables = computed(() => {
   padding: 1rem 0;
 }
 
-/* Responsivo */
+/* ===== Responsivo ===== */
 @media (max-width: 640px) {
   .dashboard-header {
     flex-direction: column;
@@ -495,19 +910,23 @@ const displayedReceivables = computed(() => {
   }
 
   .summary-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .bottom-grid {
     grid-template-columns: 1fr;
   }
-  
-  .recent-section {
-    grid-template-columns: 1fr;
+
+  .chart-container {
+    height: 250px;
   }
-  
+
   .summary-card {
-    padding: 1.25rem;
+    padding: 1rem;
   }
-  
+
   .card-content .amount {
-    font-size: 1.25rem;
+    font-size: 1.1rem;
   }
 }
 </style>

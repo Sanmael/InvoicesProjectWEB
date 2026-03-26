@@ -86,14 +86,14 @@ function closeMobileMenu() {
             <line x1="12" y1="1" x2="12" y2="23"></line>
             <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
           </svg>
-          <span v-if="sidebarOpen" class="label">Débitos</span>
+          <span v-if="sidebarOpen" class="label">Despesas</span>
         </RouterLink>
         <RouterLink to="/receivables" class="nav-item" @click="closeMobileMenu">
           <svg class="nav-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
             <polyline points="17 6 23 6 23 12"></polyline>
           </svg>
-          <span v-if="sidebarOpen" class="label">Recebíveis</span>
+          <span v-if="sidebarOpen" class="label">Receitas</span>
         </RouterLink>
         <RouterLink to="/credit-cards" class="nav-item" @click="closeMobileMenu">
           <svg class="nav-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
