@@ -1,5 +1,5 @@
 import api from './api'
-import type { CardPurchase, CreateCardPurchaseDto, UpdateCardPurchaseDto } from '@/types'
+import type { CardPurchase, CreateCardPurchaseDto, UpdateCardPurchaseDto, AnticipationSimulation } from '@/types'
 
 export const cardPurchaseService = {
   async getByCard(cardId: string): Promise<CardPurchase[]> {
@@ -34,5 +34,10 @@ export const cardPurchaseService = {
 
   async delete(id: string): Promise<void> {
     await api.delete(`/cardpurchases/${id}`)
+  },
+
+  async simulateAnticipation(id: string, monthlyDiscountRate: number = 2.5): Promise<AnticipationSimulation> {
+    const response = await api.post<AnticipationSimulation>(`/cardpurchases/${id}/simulate-anticipation`, { monthlyDiscountRate })
+    return response.data
   },
 }

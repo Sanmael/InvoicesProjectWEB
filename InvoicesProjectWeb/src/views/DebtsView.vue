@@ -79,6 +79,8 @@ type DebtListItem =
   | { kind: 'single'; item: Debt }
   | { kind: 'group'; groupId: string; groupType: 'installment' | 'recurring'; items: Debt[]; representative: Debt }
 
+const buttonLoading = ref(false);
+
 const groupedDebts = computed<DebtListItem[]>(() => {
   const list = debtStore.debts
   const seenGroupIds = new Set<string>()
@@ -164,6 +166,9 @@ function openEditModal(debt: Debt) {
 }
 
 async function handleSubmit() {
+ try{
+  buttonLoading.value = true;
+
   if (mode.value === 'installment') {
     await debtStore.createInstallment(installmentForm.value)
   } else if (mode.value === 'recurring') {
@@ -179,29 +184,53 @@ async function handleSubmit() {
   } else {
     await debtStore.create(simpleForm.value)
   }
-  showModal.value = false
+  showModal.value = false;
+ }
+ finally{
+  buttonLoading.value = false;
+ }
 }
 
 async function handleEditSubmit() {
   if (!editingDebt.value) return
-  await debtStore.update(editingDebt.value.id, editForm.value)
-  showEditModal.value = false
-  editingDebt.value = null
+  buttonLoading.value = true
+  try {
+    await debtStore.update(editingDebt.value.id, editForm.value)
+    showEditModal.value = false
+    editingDebt.value = null
+  } finally {
+    buttonLoading.value = false
+  }
 }
 
 async function handleMarkAsPaid(id: string) {
-  await debtStore.markAsPaid(id)
+  buttonLoading.value = true
+  try {
+    await debtStore.markAsPaid(id)
+  } finally {
+    buttonLoading.value = false
+  }
 }
 
 async function handleDelete(id: string) {
   if (confirm('Tem certeza que deseja excluir esta despesa?')) {
-    await debtStore.remove(id)
+    buttonLoading.value = true
+    try {
+      await debtStore.remove(id)
+    } finally {
+      buttonLoading.value = false
+    }
   }
 }
 
 async function handleDeleteGroup(groupId: string) {
   if (confirm('Cancelar todas as despesas não pagas deste lote?')) {
-    await debtStore.removeGroup(groupId)
+    buttonLoading.value = true
+    try {
+      await debtStore.removeGroup(groupId)
+    } finally {
+      buttonLoading.value = false
+    }
   }
 }
 </script>
@@ -450,7 +479,7 @@ async function handleDeleteGroup(groupId: string) {
           </div>
           <div class="modal-actions">
             <button type="button" @click="showModal = false" class="btn-secondary">Cancelar</button>
-            <button type="submit" class="btn-primary">Salvar</button>
+            <button type="submit" :disabled="buttonLoading" class="btn-primary">{{ buttonLoading ? 'Salvando...' : 'Salvar' }}</button>
           </div>
         </form>
 
@@ -486,7 +515,7 @@ async function handleDeleteGroup(groupId: string) {
           </div>
           <div class="modal-actions">
             <button type="button" @click="showModal = false" class="btn-secondary">Cancelar</button>
-            <button type="submit" class="btn-primary">Gerar parcelas</button>
+            <button type="submit" :disabled="buttonLoading" class="btn-primary">{{ buttonLoading ? 'Gerando...' : 'Gerar parcelas' }}</button>
           </div>
         </form>
 
@@ -528,7 +557,7 @@ async function handleDeleteGroup(groupId: string) {
           </div>
           <div class="modal-actions">
             <button type="button" @click="showModal = false" class="btn-secondary">Cancelar</button>
-            <button type="submit" class="btn-primary">Gerar recorrência</button>
+            <button type="submit" :disabled="buttonLoading" class="btn-primary">{{ buttonLoading ? 'Gerando...' : 'Gerar recorrência' }}</button>
           </div>
         </form>
       </div>
@@ -566,7 +595,7 @@ async function handleDeleteGroup(groupId: string) {
           </div>
           <div class="modal-actions">
             <button type="button" @click="showEditModal = false" class="btn-secondary">Cancelar</button>
-            <button type="submit" class="btn-primary">Salvar</button>
+            <button type="submit" :disabled="buttonLoading" class="btn-primary">{{ buttonLoading ? 'Salvando...' : 'Salvar' }}</button>
           </div>
         </form>
       </div>

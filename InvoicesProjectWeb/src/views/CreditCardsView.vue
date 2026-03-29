@@ -1,8 +1,9 @@
 ﻿<script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useCreditCardStore } from '@/stores/creditCard'
-import type { CreateCreditCardDto, CreateCardPurchaseDto, UpdateCardPurchaseDto, CardPurchase } from '@/types'
+import type { CreateCreditCardDto, CreateCardPurchaseDto, UpdateCardPurchaseDto, CardPurchase, BestCardRecommendation, AnticipationSimulation } from '@/types'
 import { cardPurchaseService } from '@/services/cardPurchaseService'
+import { creditCardService } from '@/services/creditCardService'
 
 const cardStore = useCreditCardStore()
 
@@ -17,6 +18,19 @@ const showPurchaseModal = ref(false)
 const showEditPurchaseModal = ref(false)
 const selectedCardId = ref('')
 const editingPurchase = ref<CardPurchase | null>(null)
+const buttonLoading = ref(false)
+
+// Best card recommendation
+const bestCardRecommendations = ref<BestCardRecommendation[]>([])
+const showBestCard = ref(false)
+const topCard = computed(() => bestCardRecommendations.value[0] ?? null)
+
+// Anticipation simulation
+const showAnticipationModal = ref(false)
+const anticipationResult = ref<AnticipationSimulation | null>(null)
+const anticipationLoading = ref(false)
+const anticipationRate = ref(2.5)
+const anticipationPurchase = ref<CardPurchase | null>(null)
 
 const cardFormData = ref<CreateCreditCardDto>({
   name: '',
@@ -43,10 +57,6 @@ const editPurchaseForm = ref<UpdateCardPurchaseDto>({
   installments: 1,
   notes: '',
   category: 'Outros',
-})
-
-onMounted(() => {
-  cardStore.fetchAll()
 })
 
 const formatCurrency = (value: number) => {
@@ -88,46 +98,124 @@ function openEditPurchaseModal(purchase: CardPurchase) {
 }
 
 async function handleCardSubmit() {
-  await cardStore.create(cardFormData.value)
-  showCardModal.value = false
+  buttonLoading.value = true
+  try {
+    await cardStore.create(cardFormData.value)
+    showCardModal.value = false
+  } finally {
+    buttonLoading.value = false
+  }
 }
 
 async function handlePurchaseSubmit() {
-  await cardPurchaseService.create(purchaseFormData.value)
-  showPurchaseModal.value = false
-  if (cardStore.currentCard?.id === selectedCardId.value) {
-    await cardStore.fetchWithPurchases(selectedCardId.value)
+  buttonLoading.value = true
+  try {
+    await cardPurchaseService.create(purchaseFormData.value)
+    showPurchaseModal.value = false
+    if (cardStore.currentCard?.id === selectedCardId.value) {
+      await cardStore.fetchWithPurchases(selectedCardId.value)
+    }
+  } finally {
+    buttonLoading.value = false
   }
 }
 
 async function handleEditPurchaseSubmit() {
   if (!editingPurchase.value) return
-  await cardPurchaseService.update(editingPurchase.value.id, editPurchaseForm.value)
-  showEditPurchaseModal.value = false
-  editingPurchase.value = null
-  if (cardStore.currentCard) {
-    await cardStore.fetchWithPurchases(cardStore.currentCard.id)
+  buttonLoading.value = true
+  try {
+    await cardPurchaseService.update(editingPurchase.value.id, editPurchaseForm.value)
+    showEditPurchaseModal.value = false
+    editingPurchase.value = null
+    if (cardStore.currentCard) {
+      await cardStore.fetchWithPurchases(cardStore.currentCard.id)
+    }
+  } finally {
+    buttonLoading.value = false
   }
 }
 
 async function handleDeletePurchase(purchaseId: string) {
   if (confirm('Tem certeza que deseja excluir esta compra?')) {
-    await cardPurchaseService.delete(purchaseId)
-    if (cardStore.currentCard) {
-      await cardStore.fetchWithPurchases(cardStore.currentCard.id)
+    buttonLoading.value = true
+    try {
+      await cardPurchaseService.delete(purchaseId)
+      if (cardStore.currentCard) {
+        await cardStore.fetchWithPurchases(cardStore.currentCard.id)
+      }
+    } finally {
+      buttonLoading.value = false
     }
   }
 }
 
 async function viewCardDetails(cardId: string) {
-  await cardStore.fetchWithPurchases(cardId)
+  buttonLoading.value = true
+  try {
+    await cardStore.fetchWithPurchases(cardId)
+  } finally {
+    buttonLoading.value = false
+  }
 }
 
 async function handleDeleteCard(id: string) {
   if (confirm('Tem certeza que deseja excluir este cartão?')) {
-    await cardStore.remove(id)
+    buttonLoading.value = true
+    try {
+      await cardStore.remove(id)
+    } finally {
+      buttonLoading.value = false
+    }
   }
 }
+
+async function handleMarkPurchaseAsPaid(purchaseId: string) {
+  buttonLoading.value = true
+  try {
+    await cardPurchaseService.markAsPaid(purchaseId)
+    if (cardStore.currentCard) {
+      await cardStore.fetchWithPurchases(cardStore.currentCard.id)
+    }
+  } finally {
+    buttonLoading.value = false
+  }
+}
+
+async function fetchBestCards() {
+  try {
+    bestCardRecommendations.value = await creditCardService.getBestCardForToday()
+    showBestCard.value = bestCardRecommendations.value.length > 0
+  } catch {
+    showBestCard.value = false
+  }
+}
+
+function openAnticipationModal(purchase: CardPurchase) {
+  anticipationPurchase.value = purchase
+  anticipationResult.value = null
+  anticipationRate.value = 2.5
+  showAnticipationModal.value = true
+}
+
+async function handleSimulateAnticipation() {
+  if (!anticipationPurchase.value) return
+  anticipationLoading.value = true
+  try {
+    anticipationResult.value = await cardPurchaseService.simulateAnticipation(
+      anticipationPurchase.value.id,
+      anticipationRate.value
+    )
+  } catch {
+    anticipationResult.value = null
+  } finally {
+    anticipationLoading.value = false
+  }
+}
+
+onMounted(async () => {
+  await cardStore.fetchAll()
+  fetchBestCards()
+})
 </script>
 
 <template>
@@ -139,6 +227,34 @@ async function handleDeleteCard(id: string) {
       </div>
       <button @click="openCardModal" class="btn-primary">+ Novo Cartão</button>
     </header>
+
+    <!-- Melhor cartão para comprar hoje -->
+    <div v-if="showBestCard && topCard" class="best-card-panel">
+      <div class="best-card-header">
+        <h3>🏆 Melhor cartão para comprar hoje</h3>
+        <button @click="showBestCard = false" class="close-btn-sm">✕</button>
+      </div>
+      <div class="best-card-top">
+        <div class="best-card-name">
+          <span class="best-card-badge">RECOMENDADO</span>
+          <strong>{{ topCard.cardName }}</strong>
+          <span class="best-card-digits">•••• {{ topCard.lastFourDigits }}</span>
+        </div>
+        <div class="best-card-days">
+          <span class="days-number">{{ topCard.daysUntilPayment }}</span>
+          <span class="days-label">dias para pagar</span>
+        </div>
+      </div>
+      <p class="best-card-explanation">{{ topCard.explanation }}</p>
+      <div v-if="bestCardRecommendations.length > 1" class="best-card-others">
+        <span class="others-label">Outros cartões:</span>
+        <div class="others-list">
+          <span v-for="rec in bestCardRecommendations.slice(1)" :key="rec.cardId" class="other-card-chip">
+            {{ rec.cardName }} — {{ rec.daysUntilPayment }}d
+          </span>
+        </div>
+      </div>
+    </div>
 
     <div v-if="cardStore.loading" class="loading">Carregando...</div>
 
@@ -237,6 +353,18 @@ async function handleDeleteCard(id: string) {
               {{ formatCurrency(purchase.amount) }}
             </span>
             <div class="purchase-actions">
+              <button v-if="!purchase.isPaid" @click="handleMarkPurchaseAsPaid(purchase.id)" class="btn-action-sm btn-success-sm" title="Marcar como pago">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </button>
+              <span v-else class="paid-badge-sm">Pago</span>
+              <button v-if="purchase.installments > 1 && !purchase.isPaid" @click="openAnticipationModal(purchase)" class="btn-action-sm btn-anticipation-sm" title="Simular Antecipação">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+                  <polyline points="17 6 23 6 23 12"></polyline>
+                </svg>
+              </button>
               <button @click="openEditPurchaseModal(purchase)" class="btn-action-sm btn-edit-sm" title="Editar">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -287,7 +415,7 @@ async function handleDeleteCard(id: string) {
           </div>
           <div class="modal-actions">
             <button type="button" @click="showCardModal = false" class="btn-secondary">Cancelar</button>
-            <button type="submit" class="btn-primary">Salvar</button>
+            <button type="submit" :disabled="buttonLoading" class="btn-primary">{{ buttonLoading ? 'Salvando...' : 'Salvar' }}</button>
           </div>
         </form>
       </div>
@@ -331,7 +459,7 @@ async function handleDeleteCard(id: string) {
           </div>
           <div class="modal-actions">
             <button type="button" @click="showPurchaseModal = false" class="btn-secondary">Cancelar</button>
-            <button type="submit" class="btn-primary">Salvar</button>
+            <button type="submit" :disabled="buttonLoading" class="btn-primary">{{ buttonLoading ? 'Salvando...' : 'Salvar' }}</button>
           </div>
         </form>
       </div>
@@ -375,9 +503,71 @@ async function handleDeleteCard(id: string) {
           </div>
           <div class="modal-actions">
             <button type="button" @click="showEditPurchaseModal = false" class="btn-secondary">Cancelar</button>
-            <button type="submit" class="btn-primary">Salvar</button>
+            <button type="submit" :disabled="buttonLoading" class="btn-primary">{{ buttonLoading ? 'Salvando...' : 'Salvar' }}</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- Modal: Simulação de Antecipação -->
+    <div v-if="showAnticipationModal" class="modal-overlay">
+      <div class="modal anticipation-modal">
+        <div class="modal-header">
+          <h2>📊 Simular Antecipação</h2>
+          <button type="button" class="close-btn" @click="showAnticipationModal = false">✕</button>
+        </div>
+        <div v-if="anticipationPurchase" class="anticipation-purchase-info">
+          <strong>{{ anticipationPurchase.description }}</strong>
+          <span>{{ anticipationPurchase.installments }} parcelas de {{ formatCurrency(anticipationPurchase.amount / anticipationPurchase.installments) }}</span>
+        </div>
+        <div class="form-group">
+          <label>Taxa de desconto mensal (%)</label>
+          <div class="rate-input-group">
+            <input v-model.number="anticipationRate" type="number" step="0.1" min="0.1" max="20" class="rate-input" />
+            <span class="rate-suffix">% a.m.</span>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" @click="showAnticipationModal = false" class="btn-secondary">Fechar</button>
+          <button type="button" @click="handleSimulateAnticipation" class="btn-primary" :disabled="anticipationLoading">
+            {{ anticipationLoading ? 'Calculando...' : 'Simular' }}
+          </button>
+        </div>
+
+        <div v-if="anticipationResult" class="anticipation-results">
+          <div class="anticipation-summary">
+            <div class="anticipation-summary-item">
+              <span class="label">Total Original</span>
+              <span class="value">{{ formatCurrency(anticipationResult.totalRemaining) }}</span>
+            </div>
+            <div class="anticipation-summary-item highlight">
+              <span class="label">Total com Desconto</span>
+              <span class="value">{{ formatCurrency(anticipationResult.totalDiscounted) }}</span>
+            </div>
+            <div class="anticipation-summary-item savings">
+              <span class="label">Economia Total</span>
+              <span class="value">{{ formatCurrency(anticipationResult.totalSavings) }}</span>
+            </div>
+          </div>
+          <table class="anticipation-table">
+            <thead>
+              <tr>
+                <th>Parcela</th>
+                <th>Original</th>
+                <th>Com Desconto</th>
+                <th>Economia</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="inst in anticipationResult.installments" :key="inst.installmentNumber">
+                <td>{{ inst.installmentNumber }}ª</td>
+                <td>{{ formatCurrency(inst.originalValue) }}</td>
+                <td class="discounted">{{ formatCurrency(inst.discountedValue) }}</td>
+                <td class="saved">{{ formatCurrency(inst.savings) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -385,6 +575,178 @@ async function handleDeleteCard(id: string) {
 
 <style scoped>
 .credit-cards-page { max-width: 1100px; margin: 0 auto; }
+
+/* Best Card Panel */
+.best-card-panel {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 2rem;
+  color: white;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
+}
+.best-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+.best-card-header h3 { margin: 0; font-size: 1rem; }
+.close-btn-sm {
+  background: rgba(255,255,255,0.2);
+  border: none;
+  color: white;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.close-btn-sm:hover { background: rgba(255,255,255,0.35); }
+.best-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.best-card-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.best-card-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: rgba(255,255,255,0.25);
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  letter-spacing: 0.5px;
+}
+.best-card-digits { font-family: monospace; opacity: 0.8; }
+.best-card-days {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(255,255,255,0.15);
+  padding: 0.5rem 1rem;
+  border-radius: 12px;
+}
+.days-number { font-size: 1.5rem; font-weight: 700; line-height: 1; }
+.days-label { font-size: 0.7rem; opacity: 0.85; }
+.best-card-explanation {
+  font-size: 0.85rem;
+  opacity: 0.9;
+  margin: 0.5rem 0;
+  line-height: 1.4;
+}
+.best-card-others { margin-top: 0.75rem; }
+.others-label { font-size: 0.8rem; opacity: 0.8; }
+.others-list { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.35rem; }
+.other-card-chip {
+  font-size: 0.75rem;
+  background: rgba(255,255,255,0.15);
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+}
+
+/* Anticipation button */
+.btn-anticipation-sm {
+  background: var(--color-warning, #f59e0b);
+  color: white;
+}
+
+/* Mark as paid button */
+.btn-success-sm {
+  background: var(--color-success, #22c55e);
+  color: white;
+}
+.paid-badge-sm {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-success);
+  background: rgba(34, 197, 94, 0.1);
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+}
+
+/* Anticipation modal */
+.anticipation-modal { max-width: 550px; }
+.anticipation-purchase-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  border-radius: var(--border-radius);
+  margin-bottom: 1rem;
+  color: var(--text-primary);
+}
+.anticipation-purchase-info span { font-size: 0.85rem; color: var(--text-muted); }
+.rate-input-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.rate-input {
+  width: 100px;
+  padding: 0.75rem;
+  border: 2px solid var(--input-border);
+  border-radius: var(--border-radius);
+  font-size: 1rem;
+  background: var(--input-bg);
+  color: var(--text-primary);
+}
+.rate-input:focus { outline: none; border-color: var(--color-primary); }
+.rate-suffix { color: var(--text-muted); font-size: 0.9rem; }
+
+.anticipation-results { margin-top: 1.5rem; }
+.anticipation-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.anticipation-summary-item {
+  text-align: center;
+  padding: 0.75rem;
+  background: var(--bg-secondary);
+  border-radius: var(--border-radius);
+}
+.anticipation-summary-item .label {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+.anticipation-summary-item .value { font-size: 1rem; font-weight: 700; color: var(--text-primary); }
+.anticipation-summary-item.highlight .value { color: var(--color-primary); }
+.anticipation-summary-item.savings .value { color: var(--color-success); }
+
+.anticipation-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.anticipation-table th {
+  text-align: left;
+  padding: 0.5rem;
+  border-bottom: 2px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+.anticipation-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+.anticipation-table .discounted { color: var(--color-primary); font-weight: 600; }
+.anticipation-table .saved { color: var(--color-success); font-weight: 600; }
 
 .page-header {
   display: flex;

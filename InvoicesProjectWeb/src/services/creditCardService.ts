@@ -1,5 +1,5 @@
 import api from './api'
-import type { CreditCard, CreditCardWithPurchases, CreateCreditCardDto, UpdateCreditCardDto } from '@/types'
+import type { CreditCard, CreditCardWithPurchases, CreateCreditCardDto, UpdateCreditCardDto, BestCardRecommendation } from '@/types'
 
 export const creditCardService = {
   async getAll(): Promise<CreditCard[]> {
@@ -29,5 +29,10 @@ export const creditCardService = {
 
   async delete(id: string): Promise<void> {
     await api.delete(`/creditcards/${id}`)
+  },
+
+  async getBestCardForToday(): Promise<BestCardRecommendation[]> {
+    const response = await api.get<BestCardRecommendation[]>('/creditcards/best-today')
+    return response.data
   },
 }

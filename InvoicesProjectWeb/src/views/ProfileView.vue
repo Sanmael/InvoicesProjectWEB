@@ -2,10 +2,12 @@
 import { onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { notificationService } from '@/services/notificationService'
+import { telegramService } from '@/services/telegramService'
 import type {
   EmailNotification,
   NotificationPreferenceCreateDto,
   NotificationSummary,
+  TelegramStatus,
   UpdateUserDto,
 } from '@/types'
 
@@ -133,8 +135,59 @@ function formatDateTime(value: string | null) {
   return new Date(value).toLocaleString('pt-BR')
 }
 
+// Telegram
+const telegramStatus = ref<TelegramStatus | null>(null)
+const telegramLoading = ref(false)
+const telegramLinkUrl = ref('')
+
+async function loadTelegramStatus() {
+  try {
+    telegramStatus.value = await telegramService.getStatus()
+  } catch {
+    // Telegram not configured
+  }
+}
+
+async function generateTelegramLink() {
+  telegramLoading.value = true
+  try {
+    const link = await telegramService.generateLink()
+    telegramLinkUrl.value = `https://t.me/${link.botUsername}?start=${link.linkToken}`
+  } catch (e: any) {
+    notificationErrorMsg.value = e.response?.data?.message || 'Erro ao gerar link do Telegram'
+  } finally {
+    telegramLoading.value = false
+  }
+}
+
+async function toggleTelegram(enabled: boolean) {
+  telegramLoading.value = true
+  try {
+    await telegramService.toggle(enabled)
+    telegramStatus.value = await telegramService.getStatus()
+  } catch (e: any) {
+    notificationErrorMsg.value = e.response?.data?.message || 'Erro ao alterar Telegram'
+  } finally {
+    telegramLoading.value = false
+  }
+}
+
+async function unlinkTelegram() {
+  telegramLoading.value = true
+  try {
+    await telegramService.unlink()
+    telegramStatus.value = await telegramService.getStatus()
+    telegramLinkUrl.value = ''
+  } catch (e: any) {
+    notificationErrorMsg.value = e.response?.data?.message || 'Erro ao desvincular Telegram'
+  } finally {
+    telegramLoading.value = false
+  }
+}
+
 onMounted(() => {
   loadNotificationPreferences()
+  loadTelegramStatus()
 })
 </script>
 
@@ -289,6 +342,43 @@ onMounted(() => {
             </span>
           </div>
           <p v-if="notificationHistory.length === 0" class="empty-note">Nenhum aviso enviado ainda.</p>
+        </div>
+      </div>
+
+      <!-- Telegram -->
+      <div class="card notifications-card">
+        <h2>📱 Notificações via Telegram</h2>
+        <p class="section-description">Receba alertas de vencimentos e avisos diretamente no Telegram.</p>
+
+        <div v-if="telegramStatus?.isLinked" class="telegram-linked">
+          <div class="telegram-info">
+            <span class="telegram-badge linked">✅ Vinculado</span>
+            <span v-if="telegramStatus.telegramUsername">@{{ telegramStatus.telegramUsername }}</span>
+          </div>
+          <label class="toggle-row">
+            <input
+              type="checkbox"
+              :checked="telegramStatus.notificationsEnabled"
+              @change="toggleTelegram(!telegramStatus!.notificationsEnabled)"
+              :disabled="telegramLoading"
+            />
+            <span>Notificações ativas</span>
+          </label>
+          <button class="btn-danger-small" @click="unlinkTelegram" :disabled="telegramLoading">
+            Desvincular
+          </button>
+        </div>
+
+        <div v-else class="telegram-unlinked">
+          <p>Vincule seu Telegram para receber alertas de boletos, faturas e vencimentos.</p>
+          <div v-if="telegramLinkUrl" class="telegram-link-box">
+            <p>Clique no link abaixo para vincular:</p>
+            <a :href="telegramLinkUrl" target="_blank" class="telegram-link">{{ telegramLinkUrl }}</a>
+            <small>O link é de uso único. Após clicar, envie /start no bot.</small>
+          </div>
+          <button v-else class="btn-primary" @click="generateTelegramLink" :disabled="telegramLoading">
+            {{ telegramLoading ? 'Gerando...' : 'Gerar Link de Vinculação' }}
+          </button>
         </div>
       </div>
     </div>
@@ -474,5 +564,75 @@ onMounted(() => {
   .card {
     padding: 1.5rem;
   }
+}
+
+.telegram-linked {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.telegram-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.telegram-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.telegram-badge.linked {
+  background: var(--color-success-bg, rgba(52, 211, 153, 0.1));
+  color: var(--color-success, #34d399);
+}
+
+.telegram-unlinked p {
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.telegram-link-box {
+  background: var(--color-background-soft, #1a1a2e);
+  padding: 16px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.telegram-link-box p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.telegram-link {
+  color: var(--color-primary, #818cf8);
+  word-break: break-all;
+  font-weight: 600;
+}
+
+.telegram-link-box small {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.btn-danger-small {
+  align-self: flex-start;
+  padding: 6px 16px;
+  background: var(--color-danger-bg, rgba(248, 113, 113, 0.1));
+  color: var(--color-danger, #f87171);
+  border: 1px solid var(--color-danger, #f87171);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.btn-danger-small:hover {
+  background: var(--color-danger, #f87171);
+  color: #fff;
 }
 </style>

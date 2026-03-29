@@ -310,3 +310,237 @@ export interface ChatResponse {
   reply: string
   actions?: ChatActionResult[]
 }
+
+// Document Import (OCR)
+export interface ExtractedItem {
+  description: string
+  amount: number
+  date: string
+  category: string | null
+  type: 'debt' | 'card_purchase'
+  installments: number
+}
+
+export interface DocumentExtractionResult {
+  fileName: string
+  documentType: string
+  items: ExtractedItem[]
+  summary: string | null
+}
+
+export interface ConfirmImportRequest {
+  items: ExtractedItem[]
+  creditCardId?: string | null
+}
+
+export interface ImportResult {
+  totalItems: number
+  debtsCreated: number
+  cardPurchasesCreated: number
+  details: string[]
+}
+
+// Bank Import (OFX/CSV)
+export interface BankTransaction {
+  description: string
+  amount: number
+  date: string
+  transactionType: 'credit' | 'debit'
+  category: string | null
+  memo: string | null
+}
+
+export interface BankImportResult {
+  fileName: string
+  bankName: string | null
+  accountId: string | null
+  totalTransactions: number
+  transactions: BankTransaction[]
+}
+
+export interface ConfirmBankImportRequest {
+  transactions: BankTransaction[]
+  creditCardId?: string | null
+}
+
+// Telegram
+export interface TelegramLink {
+  botUsername: string
+  linkToken: string
+}
+
+export interface TelegramStatus {
+  isLinked: boolean
+  telegramUsername: string | null
+  notificationsEnabled: boolean
+}
+
+// Purchase Plan types
+export interface MonthProjection {
+  month: string
+  label: string
+  receivables: number
+  debts: number
+  cards: number
+  totalExpenses: number
+  freeBalance: number
+  afterSavings: number
+}
+
+export interface ScenarioMonthImpact {
+  month: string
+  label: string
+  payment: number
+  remainingAfterSavings: number
+}
+
+export interface PurchaseScenario {
+  type: 'pix' | 'card'
+  label: string
+  totalCost: number
+  installments: number
+  installmentValue: number
+  viable: boolean
+  monthlyImpact: ScenarioMonthImpact[]
+}
+
+export interface PurchasePlan {
+  product: string
+  totalPrice: number
+  pixDiscountPercent: number
+  pixPrice: number
+  savingsGoal: number
+  startMonth: string
+  monthlyProjection: MonthProjection[]
+  scenarios: PurchaseScenario[]
+  recommendation: string
+  cardStrategy: CardStrategyResult | null
+}
+
+export interface CardStrategyResult {
+  totalAvailable: number
+  coversFullAmount: boolean
+  bestCardName: string | null
+  bestCardDaysUntilPayment: number
+  cards: CardSummary[]
+  strategies: CardPlanStrategy[]
+}
+
+export interface CardSummary {
+  cardId: string
+  cardName: string
+  lastFourDigits: string
+  creditLimit: number
+  availableLimit: number
+  closingDay: number
+  dueDay: number
+  daysUntilPayment: number
+  afterClosing: boolean
+}
+
+export interface CardPlanStrategy {
+  type: 'single' | 'split'
+  label: string
+  allocations: CardAllocation[]
+  maxDaysUntilPayment: number
+  coversFullAmount: boolean
+}
+
+export interface CardAllocation {
+  cardId: string
+  cardName: string
+  lastFourDigits: string
+  amount: number
+  availableLimit: number
+  daysUntilPayment: number
+  dueDate: string
+  explanation: string
+}
+
+// Savings Goal types
+export interface SavingsGoal {
+  id: string
+  title: string
+  description: string | null
+  targetAmount: number
+  currentAmount: number
+  deadline: string | null
+  category: string
+  isCompleted: boolean
+  completedAt: string | null
+  progressPercent: number
+  createdAt: string
+}
+
+export interface CreateSavingsGoalDto {
+  title: string
+  description?: string
+  targetAmount: number
+  currentAmount: number
+  deadline?: string
+  category?: string
+}
+
+export interface UpdateSavingsGoalDto {
+  title?: string
+  description?: string
+  targetAmount?: number
+  currentAmount?: number
+  deadline?: string
+  category?: string
+}
+
+// Best Card Recommendation
+export interface BestCardRecommendation {
+  cardId: string
+  cardName: string
+  lastFourDigits: string
+  closingDay: number
+  dueDay: number
+  daysUntilPayment: number
+  nextClosingDate: string
+  invoiceDueDate: string
+  explanation: string
+}
+
+// Anticipation Simulation
+export interface AnticipationInstallment {
+  installmentNumber: number
+  originalValue: number
+  discountedValue: number
+  savings: number
+}
+
+export interface AnticipationSimulation {
+  purchaseId: string
+  description: string
+  totalInstallments: number
+  remainingInstallments: number
+  installmentValue: number
+  totalRemaining: number
+  totalDiscounted: number
+  totalSavings: number
+  discountRate: number
+  installments: AnticipationInstallment[]
+}
+
+// Financial Health Score
+export interface FinancialScoreBreakdown {
+  paymentDiscipline: number
+  paymentDisciplineMax: number
+  creditUtilization: number
+  creditUtilizationMax: number
+  savingsRate: number
+  savingsRateMax: number
+  goalProgress: number
+  goalProgressMax: number
+  financialOrganization: number
+  financialOrganizationMax: number
+}
+
+export interface FinancialScore {
+  totalScore: number
+  classification: string
+  breakdown: FinancialScoreBreakdown
+  tips: string[]
+}

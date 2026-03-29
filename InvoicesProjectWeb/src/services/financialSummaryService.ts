@@ -1,5 +1,5 @@
 import api from './api'
-import type { FinancialSummary } from '@/types'
+import type { FinancialSummary, FinancialScore } from '@/types'
 
 export const financialSummaryService = {
   async getCurrentMonth(): Promise<FinancialSummary> {
@@ -9,6 +9,11 @@ export const financialSummaryService = {
 
   async getByMonth(year: number, month: number): Promise<FinancialSummary> {
     const response = await api.get<FinancialSummary>(`/financialsummary/${year}/${month}`)
+    return response.data
+  },
+
+  async getFinancialScore(): Promise<FinancialScore> {
+    const response = await api.get<FinancialScore>('/financialsummary/score')
     return response.data
   },
 }

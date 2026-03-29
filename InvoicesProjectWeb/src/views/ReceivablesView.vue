@@ -11,6 +11,7 @@ const mode = ref<'simple' | 'recurring'>('simple')
 const editingReceivable = ref<Receivable | null>(null)
 const expandedRecurringGroupIds = ref<Set<string>>(new Set())
 const selectedMonth = ref('')
+const buttonLoading = ref(false)
 
 const simpleForm = ref<CreateReceivableDto>({
   description: '',
@@ -139,34 +140,59 @@ function openEditModal(receivable: Receivable) {
 }
 
 async function handleSubmit() {
-  if (mode.value === 'recurring') {
-    await receivableStore.createRecurring(recurringForm.value)
-  } else {
-    await receivableStore.create(simpleForm.value)
+  buttonLoading.value = true
+  try {
+    if (mode.value === 'recurring') {
+      await receivableStore.createRecurring(recurringForm.value)
+    } else {
+      await receivableStore.create(simpleForm.value)
+    }
+    showModal.value = false
+  } finally {
+    buttonLoading.value = false
   }
-  showModal.value = false
 }
 
 async function handleEditSubmit() {
   if (!editingReceivable.value) return
-  await receivableStore.update(editingReceivable.value.id, editForm.value)
-  showEditModal.value = false
-  editingReceivable.value = null
+  buttonLoading.value = true
+  try {
+    await receivableStore.update(editingReceivable.value.id, editForm.value)
+    showEditModal.value = false
+    editingReceivable.value = null
+  } finally {
+    buttonLoading.value = false
+  }
 }
 
 async function handleMarkAsReceived(id: string) {
-  await receivableStore.markAsReceived(id)
+  buttonLoading.value = true
+  try {
+    await receivableStore.markAsReceived(id)
+  } finally {
+    buttonLoading.value = false
+  }
 }
 
 async function handleDelete(id: string) {
   if (confirm('Tem certeza que deseja excluir esta receita?')) {
-    await receivableStore.remove(id)
+    buttonLoading.value = true
+    try {
+      await receivableStore.remove(id)
+    } finally {
+      buttonLoading.value = false
+    }
   }
 }
 
 async function handleDeleteGroup(groupId: string) {
   if (confirm('Cancelar todos os recebimentos futuros desta recorrência?')) {
-    await receivableStore.removeGroup(groupId)
+    buttonLoading.value = true
+    try {
+      await receivableStore.removeGroup(groupId)
+    } finally {
+      buttonLoading.value = false
+    }
   }
 }
 </script>
@@ -381,7 +407,7 @@ async function handleDeleteGroup(groupId: string) {
           </div>
           <div class="modal-actions">
             <button type="button" @click="showModal = false" class="btn-secondary">Cancelar</button>
-            <button type="submit" class="btn-primary">Salvar</button>
+            <button type="submit" :disabled="buttonLoading" class="btn-primary">{{ buttonLoading ? 'Salvando...' : 'Salvar' }}</button>
           </div>
         </form>
 
@@ -413,7 +439,7 @@ async function handleDeleteGroup(groupId: string) {
           </div>
           <div class="modal-actions">
             <button type="button" @click="showModal = false" class="btn-secondary">Cancelar</button>
-            <button type="submit" class="btn-primary">Gerar recorrência</button>
+            <button type="submit" :disabled="buttonLoading" class="btn-primary">{{ buttonLoading ? 'Gerando...' : 'Gerar recorrência' }}</button>
           </div>
         </form>
       </div>
@@ -445,7 +471,7 @@ async function handleDeleteGroup(groupId: string) {
           </div>
           <div class="modal-actions">
             <button type="button" @click="showEditModal = false" class="btn-secondary">Cancelar</button>
-            <button type="submit" class="btn-primary">Salvar</button>
+            <button type="submit" :disabled="buttonLoading" class="btn-primary">{{ buttonLoading ? 'Salvando...' : 'Salvar' }}</button>
           </div>
         </form>
       </div>

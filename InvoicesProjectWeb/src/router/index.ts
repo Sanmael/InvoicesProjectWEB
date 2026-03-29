@@ -56,6 +56,21 @@ const router = createRouter({
           component: () => import('@/views/ChatView.vue'),
         },
         {
+          path: 'import',
+          name: 'import',
+          component: () => import('@/views/ImportView.vue'),
+        },
+        {
+          path: 'purchase-plan',
+          name: 'purchase-plan',
+          component: () => import('@/views/PurchasePlanView.vue'),
+        },
+        {
+          path: 'savings-goals',
+          name: 'savings-goals',
+          component: () => import('@/views/SavingsGoalsView.vue'),
+        },
+        {
           path: 'admin/email-settings',
           name: 'admin-email-settings',
           component: () => import('@/views/AdminEmailSettingsView.vue'),

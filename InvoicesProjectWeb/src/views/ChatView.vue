@@ -1,12 +1,56 @@
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { chatService } from '@/services/chatService'
-import type { ChatMessage } from '@/types'
+import { usePurchasePlan } from '@/composables/usePurchasePlan'
+import type { ChatMessage, PurchasePlan } from '@/types'
+
+const router = useRouter()
+const { setPlan } = usePurchasePlan()
 
 const messages = ref<ChatMessage[]>([])
 const input = ref('')
 const loading = ref(false)
 const messagesContainer = ref<HTMLElement | null>(null)
+
+const PLAN_START = '<!--PURCHASE_PLAN-->'
+const PLAN_END = '<!--/PURCHASE_PLAN-->'
+
+function extractPlan(content: string): { text: string; plan: PurchasePlan | null } {
+  const startIdx = content.indexOf(PLAN_START)
+  if (startIdx === -1) return { text: content, plan: null }
+
+  const jsonStart = startIdx + PLAN_START.length
+  const endIdx = content.indexOf(PLAN_END, jsonStart)
+  if (endIdx === -1) return { text: content, plan: null }
+
+  try {
+    const json = content.substring(jsonStart, endIdx)
+    const plan = JSON.parse(json) as PurchasePlan
+    const textBefore = content.substring(0, startIdx).trim()
+    const textAfter = content.substring(endIdx + PLAN_END.length).trim()
+    const text = [textBefore, textAfter].filter(Boolean).join('\n\n')
+    return { text, plan }
+  } catch {
+    return { text: content, plan: null }
+  }
+}
+
+function hasPlan(content: string): boolean {
+  return content.includes(PLAN_START)
+}
+
+function getTextPart(content: string): string {
+  return extractPlan(content).text
+}
+
+function openPlan(content: string) {
+  const { plan } = extractPlan(content)
+  if (plan) {
+    setPlan(plan)
+    router.push('/purchase-plan')
+  }
+}
 
 async function scrollToBottom() {
   await nextTick()
@@ -83,6 +127,9 @@ function clearChat() {
             <button @click="input = 'Quais minhas despesas pendentes?'" class="suggestion-chip">
               💡 Listar despesas pendentes
             </button>
+            <button @click="$router.push('/import')" class="suggestion-chip">
+              📄 Importar fatura/extrato
+            </button>
           </div>
         </div>
 
@@ -96,7 +143,12 @@ function clearChat() {
             {{ msg.role === 'user' ? '👤' : '🤖' }}
           </div>
           <div class="bubble-content">
-            <span class="bubble-text">{{ msg.content }}</span>
+            <span class="bubble-text">{{ getTextPart(msg.content) }}</span>
+            <div v-if="msg.role === 'assistant' && hasPlan(msg.content)" class="plan-card" @click="openPlan(msg.content)">
+              <span class="plan-card-icon">📊</span>
+              <span class="plan-card-text">Ver planejamento de compra detalhado</span>
+              <span class="plan-card-arrow">→</span>
+            </div>
           </div>
         </div>
 
@@ -327,4 +379,25 @@ function clearChat() {
   .chat-bubble { max-width: 92%; }
   .suggestions { flex-direction: column; }
 }
+
+.plan-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #e8f5e9, #e3f2fd);
+  border: 1px solid #c8e6c9;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.plan-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.1);
+  border-color: #81c784;
+}
+.plan-card-icon { font-size: 1.4rem; }
+.plan-card-text { flex: 1; font-weight: 600; color: #2e7d32; font-size: 0.9rem; }
+.plan-card-arrow { font-size: 1.2rem; color: #66bb6a; }
 </style>

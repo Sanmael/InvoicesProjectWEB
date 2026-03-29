@@ -16,7 +16,8 @@ import { useFinancialSummaryStore } from '@/stores/financialSummary'
 import { useDebtStore } from '@/stores/debt'
 import { useReceivableStore } from '@/stores/receivable'
 import { useCreditCardStore } from '@/stores/creditCard'
-import type { Debt, Receivable, CreditCard } from '@/types'
+import { financialSummaryService } from '@/services/financialSummaryService'
+import type { Debt, Receivable, CreditCard, FinancialScore } from '@/types'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler)
 
@@ -28,6 +29,10 @@ const selectedMonth = ref(new Date().toISOString().slice(0, 7))
 
 // Projection range
 const projectionMonths = ref<6 | 12>(12)
+
+// Financial Score
+const financialScore = ref<FinancialScore | null>(null)
+const scoreLoading = ref(false)
 
 type DashboardDebtItem =
   | { kind: 'single'; debt: Debt }
@@ -50,6 +55,13 @@ onMounted(async () => {
     receivableStore.fetchAll(),
     cardStore.fetchAll(),
   ])
+
+  // Load financial score in background
+  scoreLoading.value = true
+  try {
+    financialScore.value = await financialSummaryService.getFinancialScore()
+  } catch { /* silent */ }
+  scoreLoading.value = false
 })
 
 watch(selectedMonth, async (value) => {
@@ -486,6 +498,54 @@ const displayedReceivables = computed(() => {
         </div>
       </div>
 
+      <!-- Financial Health Score -->
+      <div v-if="financialScore" class="score-section">
+        <div class="score-header">
+          <h2>🏆 Saúde Financeira</h2>
+          <span class="score-classification" :class="'score-' + financialScore.classification.toLowerCase()">
+            {{ financialScore.classification }}
+          </span>
+        </div>
+        <div class="score-body">
+          <div class="score-gauge">
+            <svg viewBox="0 0 120 120" class="score-ring">
+              <circle cx="60" cy="60" r="52" fill="none" stroke="var(--border-color)" stroke-width="10" />
+              <circle cx="60" cy="60" r="52" fill="none"
+                :stroke="financialScore.totalScore >= 70 ? 'var(--color-success)' : financialScore.totalScore >= 50 ? 'var(--color-warning)' : 'var(--color-danger)'"
+                stroke-width="10" stroke-linecap="round"
+                :stroke-dasharray="(financialScore.totalScore / 100 * 326.7) + ' 326.7'"
+                transform="rotate(-90 60 60)" />
+            </svg>
+            <span class="score-number">{{ financialScore.totalScore }}</span>
+          </div>
+          <div class="score-breakdown">
+            <div class="score-bar-item" v-for="item in [
+              { label: 'Disciplina de Pagamento', value: financialScore.breakdown.paymentDiscipline, max: financialScore.breakdown.paymentDisciplineMax },
+              { label: 'Utilização de Crédito', value: financialScore.breakdown.creditUtilization, max: financialScore.breakdown.creditUtilizationMax },
+              { label: 'Taxa de Poupança', value: financialScore.breakdown.savingsRate, max: financialScore.breakdown.savingsRateMax },
+              { label: 'Progresso de Metas', value: financialScore.breakdown.goalProgress, max: financialScore.breakdown.goalProgressMax },
+              { label: 'Organização', value: financialScore.breakdown.financialOrganization, max: financialScore.breakdown.financialOrganizationMax },
+            ]" :key="item.label">
+              <div class="bar-label">
+                <span>{{ item.label }}</span>
+                <span class="bar-value">{{ item.value }}/{{ item.max }}</span>
+              </div>
+              <div class="bar-track">
+                <div class="bar-fill" :style="{ width: (item.value / item.max * 100) + '%' }"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-if="financialScore.tips.length > 0" class="score-tips">
+          <div v-for="(tip, i) in financialScore.tips" :key="i" class="score-tip">
+            💡 {{ tip }}
+          </div>
+        </div>
+      </div>
+      <div v-else-if="scoreLoading" class="score-section score-loading">
+        <p>Calculando score financeiro...</p>
+      </div>
+
       <!-- Cash Flow Chart -->
       <div class="chart-section">
         <div class="chart-header">
@@ -900,6 +960,92 @@ const displayedReceivables = computed(() => {
 .loading-small {
   color: var(--text-muted);
   padding: 1rem 0;
+}
+
+/* ===== Financial Score ===== */
+.score-section {
+  background: var(--card-bg);
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: var(--shadow-sm);
+}
+.score-loading { text-align: center; color: var(--text-muted); }
+.score-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+}
+.score-header h2 { margin: 0; font-size: 1.1rem; color: var(--text-primary); }
+.score-classification {
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 0.3rem 0.8rem;
+  border-radius: 999px;
+}
+.score-excelente { background: var(--color-success-bg); color: var(--color-success); }
+.score-bom { background: var(--color-primary-light); color: var(--color-primary); }
+.score-regular { background: var(--color-warning-bg); color: var(--color-warning); }
+.score-atenção { background: var(--color-danger-bg); color: var(--color-danger); }
+.score-crítico { background: var(--color-danger-bg); color: var(--color-danger); }
+
+.score-body {
+  display: flex;
+  gap: 2rem;
+  align-items: center;
+}
+.score-gauge {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  flex-shrink: 0;
+}
+.score-ring { width: 100%; height: 100%; }
+.score-number {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+.score-breakdown { flex: 1; display: flex; flex-direction: column; gap: 0.6rem; }
+.bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.2rem;
+}
+.bar-value { font-weight: 600; color: var(--text-primary); }
+.bar-track {
+  height: 6px;
+  background: var(--bg-secondary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+.score-tips {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.score-tip {
+  font-size: 0.85rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--color-info-bg);
+  border-radius: var(--border-radius);
+  color: var(--text-primary);
+  border-left: 3px solid var(--color-info);
 }
 
 /* ===== Responsivo ===== */
