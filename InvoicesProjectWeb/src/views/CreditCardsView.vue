@@ -72,7 +72,7 @@ const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
 }
 
-const toInputDate = (dateStr: string) => dateStr ? dateStr.split('T')[0] : ''
+const toInputDate = (dateStr: string) => dateStr ? (dateStr.split('T')[0] ?? '') : ''
 
 const parseCivilDate = (dateStr: string) => {
   const parts = toInputDate(dateStr).split('-')
