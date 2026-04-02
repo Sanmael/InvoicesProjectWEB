@@ -20,6 +20,15 @@ const selectedCardId = ref('')
 const editingPurchase = ref<CardPurchase | null>(null)
 const buttonLoading = ref(false)
 
+const currentYear = new Date().getFullYear()
+const currentMonth = new Date().getMonth() + 1
+const selectedMonth = ref(`${currentYear}-${String(currentMonth).padStart(2, '0')}`)
+const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+const yearMonths = monthNames.map((name, i) => ({
+  label: name,
+  value: `${currentYear}-${String(i + 1).padStart(2, '0')}`,
+}))
+
 // Best card recommendation
 const bestCardRecommendations = ref<BestCardRecommendation[]>([])
 const showBestCard = ref(false)
@@ -64,6 +73,91 @@ const formatCurrency = (value: number) => {
 }
 
 const toInputDate = (dateStr: string) => dateStr ? dateStr.split('T')[0] : ''
+
+const parseCivilDate = (dateStr: string) => {
+  const parts = toInputDate(dateStr).split('-')
+  const year = Number(parts[0]) || 0
+  const month = Number(parts[1]) || 0
+  const day = Number(parts[2]) || 0
+  return { year, month, day, sortKey: year * 10000 + month * 100 + day }
+}
+
+const addMonthsToKey = (baseYear: number, baseMonth: number, offset: number) => {
+  const absolute = baseYear * 12 + (baseMonth - 1) + offset
+  const y = Math.floor(absolute / 12)
+  const m = (absolute % 12) + 1
+  return `${y}-${String(m).padStart(2, '0')}`
+}
+
+type InstallmentViewRow = {
+  rowId: string
+  purchase: CardPurchase
+  billedMonthKey: string
+  installmentNumber: number
+  installmentAmount: number
+}
+
+const sortedCards = computed(() => {
+  const sorted = [...cardStore.cards]
+  const today = new Date()
+  sorted.sort((a, b) => {
+    const nextDueA = calculateNextDueDate(a.dueDay)
+    const nextDueB = calculateNextDueDate(b.dueDay)
+    return nextDueA.getTime() - nextDueB.getTime()
+  })
+  return sorted
+})
+
+const calculateNextDueDate = (dueDay: number): Date => {
+  const today = new Date()
+  let nextDue = new Date(today.getFullYear(), today.getMonth(), dueDay)
+  if (nextDue <= today) {
+    nextDue = new Date(today.getFullYear(), today.getMonth() + 1, dueDay)
+  }
+  return nextDue
+}
+
+const projectedInstallments = computed<InstallmentViewRow[]>(() => {
+  if (!cardStore.currentCard) return []
+
+  const closingDay = cardStore.currentCard.closingDay
+  const rows: InstallmentViewRow[] = []
+
+  for (const p of cardStore.currentCard.purchases) {
+    const purchaseDate = parseCivilDate(p.purchaseDate)
+    const firstBillingOffset = p.installments <= 1 || purchaseDate.day <= closingDay ? 0 : 1
+    const installmentAmount = p.installments > 0 ? p.amount / p.installments : p.amount
+    const firstInstallment = Math.max(1, p.currentInstallment)
+
+    for (let installmentNumber = firstInstallment; installmentNumber <= p.installments; installmentNumber++) {
+      const billedMonthKey = addMonthsToKey(
+        purchaseDate.year,
+        purchaseDate.month,
+        firstBillingOffset + (installmentNumber - 1)
+      )
+
+      rows.push({
+        rowId: `${p.id}-${installmentNumber}`,
+        purchase: p,
+        billedMonthKey,
+        installmentNumber,
+        installmentAmount,
+      })
+    }
+  }
+
+  return rows.sort((a, b) => {
+    if (a.billedMonthKey !== b.billedMonthKey) {
+      return a.billedMonthKey.localeCompare(b.billedMonthKey)
+    }
+    return parseCivilDate(b.purchase.purchaseDate).sortKey - parseCivilDate(a.purchase.purchaseDate).sortKey
+  })
+})
+
+const filteredPurchases = computed<InstallmentViewRow[]>(() => {
+  if (!selectedMonth.value) return projectedInstallments.value
+  return projectedInstallments.value.filter((r) => r.billedMonthKey === selectedMonth.value)
+})
 
 function openCardModal() {
   cardFormData.value = { name: '', lastFourDigits: '', creditLimit: null, closingDay: 1, dueDay: 10 }
@@ -268,7 +362,7 @@ onMounted(async () => {
     </div>
 
     <div v-else class="cards-grid">
-      <div v-for="card in cardStore.cards" :key="card.id" class="credit-card" :class="{ inactive: !card.isActive }">
+      <div v-for="card in sortedCards" :key="card.id" class="credit-card" :class="{ inactive: !card.isActive }">
         <div class="card-header">
           <h3>{{ card.name }}</h3>
           <span class="card-digits">•••• {{ card.lastFourDigits }}</span>
@@ -334,44 +428,56 @@ onMounted(async () => {
           <span class="summary-value">{{ formatCurrency(cardStore.currentCard.creditLimit) }}</span>
         </div>
       </div>
-      <ul class="purchases-list">
-        <li v-for="purchase in cardStore.currentCard.purchases" :key="purchase.id" class="purchase-item">
+
+      <div class="month-buttons">
+        <button
+          v-for="m in yearMonths"
+          :key="m.value"
+          :class="['month-btn', { active: selectedMonth === m.value }]"
+          @click="selectedMonth = selectedMonth === m.value ? '' : m.value"
+        >
+          {{ m.label }}
+        </button>
+      </div>
+
+      <ul v-if="filteredPurchases.length > 0" class="purchases-list">
+        <li v-for="row in filteredPurchases" :key="row.rowId" class="purchase-item">
           <div class="purchase-info">
-            <span class="purchase-description">{{ purchase.description }}</span>
+            <span class="purchase-description">{{ row.purchase.description }}</span>
             <span class="purchase-meta">
               <span class="purchase-date">
-                {{ new Date(purchase.purchaseDate).toLocaleDateString('pt-BR') }}
-                <span v-if="purchase.installments > 1">
-                  ({{ purchase.currentInstallment }}/{{ purchase.installments }})
+                {{ new Date(row.purchase.purchaseDate).toLocaleDateString('pt-BR') }}
+                <span v-if="row.purchase.installments > 1">
+                  ({{ row.installmentNumber }}/{{ row.purchase.installments }})
                 </span>
               </span>
-              <span v-if="purchase.category && purchase.category !== 'Outros'" class="badge badge-category">{{ purchase.category }}</span>
+              <span v-if="row.purchase.category && row.purchase.category !== 'Outros'" class="badge badge-category">{{ row.purchase.category }}</span>
             </span>
           </div>
           <div class="purchase-right">
-            <span class="purchase-amount" :class="{ paid: purchase.isPaid }">
-              {{ formatCurrency(purchase.amount) }}
+            <span class="purchase-amount" :class="{ paid: row.purchase.isPaid }">
+              {{ formatCurrency(row.installmentAmount) }}
             </span>
             <div class="purchase-actions">
-              <button v-if="!purchase.isPaid" @click="handleMarkPurchaseAsPaid(purchase.id)" class="btn-action-sm btn-success-sm" title="Marcar como pago">
+              <button v-if="!row.purchase.isPaid" @click="handleMarkPurchaseAsPaid(row.purchase.id)" class="btn-action-sm btn-success-sm" title="Marcar como pago">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                   <polyline points="20 6 9 17 4 12"></polyline>
                 </svg>
               </button>
               <span v-else class="paid-badge-sm">Pago</span>
-              <button v-if="purchase.installments > 1 && !purchase.isPaid" @click="openAnticipationModal(purchase)" class="btn-action-sm btn-anticipation-sm" title="Simular Antecipação">
+              <button v-if="row.purchase.installments > 1 && !row.purchase.isPaid" @click="openAnticipationModal(row.purchase)" class="btn-action-sm btn-anticipation-sm" title="Simular Antecipação">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
                   <polyline points="17 6 23 6 23 12"></polyline>
                 </svg>
               </button>
-              <button @click="openEditPurchaseModal(purchase)" class="btn-action-sm btn-edit-sm" title="Editar">
+              <button @click="openEditPurchaseModal(row.purchase)" class="btn-action-sm btn-edit-sm" title="Editar">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                 </svg>
               </button>
-              <button @click="handleDeletePurchase(purchase.id)" class="btn-action-sm btn-danger-sm" title="Excluir">
+              <button @click="handleDeletePurchase(row.purchase.id)" class="btn-action-sm btn-danger-sm" title="Excluir">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="3 6 5 6 21 6"></polyline>
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -381,6 +487,10 @@ onMounted(async () => {
           </div>
         </li>
       </ul>
+      <div v-else class="empty-purchases">
+        <p v-if="!selectedMonth">Nenhuma compra registrada</p>
+        <p v-else>Nenhuma compra encontrada neste mês</p>
+      </div>
     </div>
 
     <!-- Modal: Novo Cartão -->
@@ -899,6 +1009,33 @@ onMounted(async () => {
   transition: background-color 0.3s ease;
 }
 
+.month-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+.month-btn {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--input-border);
+  border-radius: 999px;
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.month-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+.month-btn.active {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
 .details-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
 .details-header h2 { margin: 0; color: var(--text-primary); }
 
@@ -920,6 +1057,12 @@ onMounted(async () => {
 .summary-value.success { color: var(--color-success); }
 
 .purchases-list { list-style: none; padding: 0; margin: 0; }
+
+.empty-purchases {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-secondary);
+}
 
 .purchase-item {
   display: flex;

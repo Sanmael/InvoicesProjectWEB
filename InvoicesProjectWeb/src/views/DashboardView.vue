@@ -17,7 +17,8 @@ import { useDebtStore } from '@/stores/debt'
 import { useReceivableStore } from '@/stores/receivable'
 import { useCreditCardStore } from '@/stores/creditCard'
 import { financialSummaryService } from '@/services/financialSummaryService'
-import type { Debt, Receivable, CreditCard, FinancialScore } from '@/types'
+import { cardPurchaseService } from '@/services/cardPurchaseService'
+import type { Debt, Receivable, FinancialScore, CardPurchase } from '@/types'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler)
 
@@ -26,6 +27,8 @@ const debtStore = useDebtStore()
 const receivableStore = useReceivableStore()
 const cardStore = useCreditCardStore()
 const selectedMonth = ref(new Date().toISOString().slice(0, 7))
+const cardPurchasesByCard = ref<Record<string, CardPurchase[]>>({})
+const showAllCardPurchases = ref(false)
 
 // Projection range
 const projectionMonths = ref<6 | 12>(12)
@@ -56,6 +59,19 @@ onMounted(async () => {
     cardStore.fetchAll(),
   ])
 
+  // Load purchases for all cards so projection can use real installment schedule.
+  const entries = await Promise.all(
+    cardStore.cards.map(async (card) => {
+      try {
+        const purchases = await cardPurchaseService.getByCard(card.id)
+        return [card.id, purchases] as const
+      } catch {
+        return [card.id, []] as const
+      }
+    })
+  )
+  cardPurchasesByCard.value = Object.fromEntries(entries)
+
   // Load financial score in background
   scoreLoading.value = true
   try {
@@ -67,6 +83,7 @@ onMounted(async () => {
 watch(selectedMonth, async (value) => {
   showAllDebts.value = false
   showAllReceivables.value = false
+  showAllCardPurchases.value = false
   const [year, month] = value.split('-').map(Number)
   if (!year || !month) return
   await summaryStore.fetchByMonth(year, month)
@@ -89,9 +106,116 @@ const formatCivilDate = (dateStr: string) => {
   return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`
 }
 
+const monthKey = (year: number, month: number) => `${year}-${String(month).padStart(2, '0')}`
+
+const addMonths = (year: number, month: number, offset: number) => {
+  const total = year * 12 + (month - 1) + offset
+  return {
+    year: Math.floor(total / 12),
+    month: (total % 12) + 1,
+  }
+}
+
+const cardInstallmentsByMonth = computed<Record<string, number>>(() => {
+  const totals: Record<string, number> = {}
+
+  for (const card of cardStore.cards) {
+    const purchases = cardPurchasesByCard.value[card.id] ?? []
+    for (const purchase of purchases) {
+      if (purchase.isPaid) continue
+
+      const d = parseCivilDate(purchase.purchaseDate)
+      const firstBillingOffset = purchase.installments <= 1 || d.day <= card.closingDay ? 0 : 1
+      const installmentAmount = purchase.installments > 0 ? purchase.amount / purchase.installments : purchase.amount
+      const firstInstallment = Math.max(1, purchase.currentInstallment)
+
+      for (let installmentNumber = firstInstallment; installmentNumber <= purchase.installments; installmentNumber++) {
+        const billed = addMonths(d.year, d.month, firstBillingOffset + (installmentNumber - 1))
+        const key = monthKey(billed.year, billed.month)
+        totals[key] = (totals[key] ?? 0) + installmentAmount
+      }
+    }
+  }
+
+  return totals
+})
+
+const selectedMonthCardExpenses = computed(() => {
+  const [year, month] = selectedMonth.value.split('-').map(Number)
+  if (!year || !month) return 0
+  return cardInstallmentsByMonth.value[monthKey(year, month)] ?? 0
+})
+
+type CardPurchaseMonthRow = {
+  rowId: string
+  cardId: string
+  cardName: string
+  lastFourDigits: string
+  description: string
+  purchaseDate: string
+  installmentNumber: number
+  installments: number
+  installmentAmount: number
+  category: string | null
+}
+
+const selectedMonthCardPurchaseRows = computed<CardPurchaseMonthRow[]>(() => {
+  const [year, month] = selectedMonth.value.split('-').map(Number)
+  if (!year || !month) return []
+
+  const rows: CardPurchaseMonthRow[] = []
+
+  for (const card of cardStore.cards) {
+    const purchases = cardPurchasesByCard.value[card.id] ?? []
+    for (const purchase of purchases) {
+      if (purchase.isPaid) continue
+
+      const d = parseCivilDate(purchase.purchaseDate)
+      const firstBillingOffset = purchase.installments <= 1 || d.day <= card.closingDay ? 0 : 1
+      const firstInstallment = Math.max(1, purchase.currentInstallment)
+      const installmentAmount = purchase.installments > 0 ? purchase.amount / purchase.installments : purchase.amount
+
+      for (let installmentNumber = firstInstallment; installmentNumber <= purchase.installments; installmentNumber++) {
+        const billed = addMonths(d.year, d.month, firstBillingOffset + (installmentNumber - 1))
+        if (billed.year !== year || billed.month !== month) continue
+
+        rows.push({
+          rowId: `${purchase.id}-${installmentNumber}`,
+          cardId: card.id,
+          cardName: card.name,
+          lastFourDigits: card.lastFourDigits,
+          description: purchase.description,
+          purchaseDate: purchase.purchaseDate,
+          installmentNumber,
+          installments: purchase.installments,
+          installmentAmount,
+          category: purchase.category,
+        })
+      }
+    }
+  }
+
+  return rows.sort((a, b) => {
+    if (b.installmentAmount !== a.installmentAmount) {
+      return b.installmentAmount - a.installmentAmount
+    }
+    return parseCivilDate(b.purchaseDate).sortKey - parseCivilDate(a.purchaseDate).sortKey
+  })
+})
+
+const displayedCardPurchaseRows = computed(() => {
+  if (showAllCardPurchases.value) return selectedMonthCardPurchaseRows.value
+  return selectedMonthCardPurchaseRows.value.slice(0, 6)
+})
+
+const adjustedMonthBalance = computed(() => {
+  if (!summaryStore.summary) return 0
+  return summaryStore.summary.totalReceivables - summaryStore.summary.totalDebts - selectedMonthCardExpenses.value
+})
+
 const balanceClass = computed(() => {
   if (!summaryStore.summary) return ''
-  return summaryStore.summary.balance >= 0 ? 'positive' : 'negative'
+  return adjustedMonthBalance.value >= 0 ? 'positive' : 'negative'
 })
 
 const monthName = computed(() => {
@@ -141,13 +265,8 @@ const cashFlowProjection = computed<MonthProjection[]>(() => {
       })
       .reduce((sum, d) => sum + d.amount, 0)
 
-    // Sum card purchases for this month (using totalPending per card spread by closing day)
-    const cardExpenses = cardStore.cards.reduce((sum, card) => {
-      return sum + (card.totalPending / Math.max(projectionMonths.value / 2, 1))
-    }, 0)
-
-    // Only count card expenses for months where there are active cards
-    const actualCardExpenses = i < 6 ? cardExpenses : 0
+    // Sum real billed installments for this month based on card closing day schedule.
+    const actualCardExpenses = cardInstallmentsByMonth.value[monthKey(y, m)] ?? 0
 
     const balance = income - expenses - actualCardExpenses
     cumulative += balance
@@ -469,7 +588,7 @@ const displayedReceivables = computed(() => {
           <div class="card-icon">💰</div>
           <div class="card-content">
             <h3>Saldo do Mês</h3>
-            <p class="amount">{{ formatCurrency(summaryStore.summary.balance) }}</p>
+            <p class="amount">{{ formatCurrency(adjustedMonthBalance) }}</p>
           </div>
         </div>
 
@@ -493,9 +612,38 @@ const displayedReceivables = computed(() => {
           <div class="card-icon">💳</div>
           <div class="card-content">
             <h3>Cartões</h3>
-            <p class="amount">{{ formatCurrency(summaryStore.summary.totalCardPurchases) }}</p>
+            <p class="amount">{{ formatCurrency(selectedMonthCardExpenses) }}</p>
           </div>
         </div>
+      </div>
+
+      <div class="recent-card card-purchases-month">
+        <h2>💳 Compras de Cartão no Mês</h2>
+        <ul v-if="selectedMonthCardPurchaseRows.length > 0" class="item-list">
+          <li v-for="item in displayedCardPurchaseRows" :key="item.rowId" class="item card-purchase-item">
+            <div class="item-info">
+              <span class="item-description">
+                {{ item.description }}
+                <span class="item-badge installment-badge">{{ item.installmentNumber }}/{{ item.installments }}</span>
+                <span v-if="item.category && item.category !== 'Outros'" class="item-badge">{{ item.category }}</span>
+              </span>
+              <span class="item-date">
+                {{ item.cardName }} •••• {{ item.lastFourDigits }} • compra em {{ formatCivilDate(item.purchaseDate) }}
+              </span>
+            </div>
+            <span class="item-amount negative">
+              {{ formatCurrency(item.installmentAmount) }}
+            </span>
+          </li>
+        </ul>
+        <p v-else class="empty-message">Nenhuma parcela de cartão prevista neste mês</p>
+        <button
+          v-if="selectedMonthCardPurchaseRows.length > 6"
+          class="view-all-btn"
+          @click="showAllCardPurchases = !showAllCardPurchases"
+        >
+          {{ showAllCardPurchases ? 'Ver menos ↑' : `Ver todas (${selectedMonthCardPurchaseRows.length}) ↓` }}
+        </button>
       </div>
 
       <!-- Financial Health Score -->
@@ -876,6 +1024,10 @@ const displayedReceivables = computed(() => {
   transition: background-color 0.3s ease;
 }
 
+.card-purchases-month {
+  margin-bottom: 2rem;
+}
+
 .recent-card h2 {
   margin: 0 0 1rem;
   font-size: 1.1rem;
@@ -919,6 +1071,11 @@ const displayedReceivables = computed(() => {
   border-radius: 999px;
   padding: 0.15rem 0.45rem;
   font-weight: 600;
+}
+
+.item-badge.installment-badge {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
 }
 
 .item-date {

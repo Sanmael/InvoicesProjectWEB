@@ -11,8 +11,8 @@ if (!plan.value) {
   router.replace('/chat')
 }
 
-function fmt(value: number) {
-  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+function fmt(value: number | undefined | null) {
+  return (value ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
 function balanceClass(value: number) {
@@ -33,6 +33,8 @@ const notViableScenarios = computed(() => plan.value?.scenarios.filter(s => !s.v
 const selectedScenario = computed(() => {
   return viableScenarios.value[0] ?? plan.value?.scenarios[0]
 })
+
+const billsMonthHeaders = computed(() => plan.value?.cardStrategy?.billsByCard?.[0]?.months ?? [])
 </script>
 
 <template>
@@ -134,6 +136,14 @@ const selectedScenario = computed(() => {
                   {{ fmt(card.availableLimit) }}
                 </span>
               </span>
+              <span v-if="card.restoredByStartMonth > 0" class="info-item">
+                <span class="info-label">Hoje:</span>
+                <span class="info-value">{{ fmt(card.currentAvailableLimit) }}</span>
+              </span>
+              <span v-if="card.restoredByStartMonth > 0" class="info-item">
+                <span class="info-label">Libera até {{ plan.startMonth }}:</span>
+                <span class="info-value positive">+{{ fmt(card.restoredByStartMonth) }}</span>
+              </span>
               <span class="info-item">
                 <span class="info-label">Fecha dia:</span>
                 <span class="info-value">{{ card.closingDay }}</span>
@@ -152,6 +162,36 @@ const selectedScenario = computed(() => {
               <span v-else class="closing-badge open">Fatura aberta</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Per-card bill projections -->
+      <div v-if="plan.cardStrategy.billsByCard?.length" class="bills-by-card-section">
+        <h3>📋 Faturas por cartão (parcelas atuais)</h3>
+        <p class="bills-note">O quanto você já vai pagar em cada cartão por mês com as parcelas existentes, sem contar a nova compra.</p>
+        <div class="bills-table-wrapper">
+          <table class="bills-table">
+            <thead>
+              <tr>
+                <th class="bill-card-col">Cartão</th>
+                <th v-for="m in billsMonthHeaders" :key="m.month" class="bill-amount-col">
+                  {{ m.label }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="bill in plan.cardStrategy.billsByCard" :key="bill.cardId">
+                <td class="bill-card-col">
+                  <strong>{{ bill.cardName }}</strong>
+                  <span class="card-digits"> •••• {{ bill.lastFourDigits }}</span>
+                </td>
+                <td v-for="m in bill.months" :key="m.month"
+                    :class="m.amount > 0 ? 'negative' : 'zero-amount'">
+                  {{ m.amount > 0 ? fmt(m.amount) : '—' }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -208,13 +248,18 @@ const selectedScenario = computed(() => {
             </div>
           </div>
           <div class="scenario-impact">
-            <div v-for="m in s.monthlyImpact" :key="m.month" class="impact-row">
-              <span class="impact-month">{{ m.label }}</span>
-              <span class="impact-payment">-{{ fmt(m.payment) }}</span>
-              <span class="impact-remaining" :class="balanceClass(m.remainingAfterSavings)">
-                sobra {{ fmt(m.remainingAfterSavings) }}
-              </span>
-            </div>
+            <template v-for="m in s.monthlyImpact" :key="m.month">
+              <div class="impact-row">
+                <span class="impact-month">{{ m.label }}</span>
+                <span class="impact-payment">-{{ fmt(m.totalCardBill) }}</span>
+                <span class="impact-remaining" :class="balanceClass(m.remainingAfterSavings)">
+                  sobra {{ fmt(m.remainingAfterSavings) }}
+                </span>
+              </div>
+              <div class="impact-extra">
+                exist. {{ fmt(m.baseCardBill) }} + nova {{ fmt(m.payment) }}
+              </div>
+            </template>
           </div>
         </div>
       </div>
@@ -240,13 +285,18 @@ const selectedScenario = computed(() => {
             </div>
           </div>
           <div class="scenario-impact">
-            <div v-for="m in s.monthlyImpact" :key="m.month" class="impact-row">
-              <span class="impact-month">{{ m.label }}</span>
-              <span class="impact-payment">-{{ fmt(m.payment) }}</span>
-              <span class="impact-remaining" :class="balanceClass(m.remainingAfterSavings)">
-                sobra {{ fmt(m.remainingAfterSavings) }}
-              </span>
-            </div>
+            <template v-for="m in s.monthlyImpact" :key="m.month">
+              <div class="impact-row">
+                <span class="impact-month">{{ m.label }}</span>
+                <span class="impact-payment">-{{ fmt(m.totalCardBill) }}</span>
+                <span class="impact-remaining" :class="balanceClass(m.remainingAfterSavings)">
+                  sobra {{ fmt(m.remainingAfterSavings) }}
+                </span>
+              </div>
+              <div class="impact-extra">
+                exist. {{ fmt(m.baseCardBill) }} + nova {{ fmt(m.payment) }}
+              </div>
+            </template>
           </div>
         </div>
       </div>
@@ -524,6 +574,72 @@ const selectedScenario = computed(() => {
   font-weight: 600;
   min-width: 120px;
   text-align: right;
+}
+
+.impact-extra {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin: 2px 0 8px;
+}
+
+.bills-by-card-section {
+  margin-top: 24px;
+}
+
+.bills-by-card-section h3 {
+  font-size: 1rem;
+  margin-bottom: 6px;
+  color: var(--text-primary);
+}
+
+.bills-note {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.bills-table-wrapper {
+  overflow-x: auto;
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.bills-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.bills-table th {
+  background: var(--bg-secondary);
+  padding: 8px 10px;
+  text-align: right;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
+}
+
+.bill-card-col {
+  text-align: left !important;
+  min-width: 150px;
+  white-space: nowrap;
+}
+
+.bill-amount-col {
+  min-width: 80px;
+}
+
+.bills-table td {
+  padding: 7px 10px;
+  text-align: right;
+  border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.zero-amount {
+  color: var(--text-muted);
 }
 
 @media (max-width: 600px) {

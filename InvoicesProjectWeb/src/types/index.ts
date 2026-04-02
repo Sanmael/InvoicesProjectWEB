@@ -391,6 +391,9 @@ export interface ScenarioMonthImpact {
   month: string
   label: string
   payment: number
+  baseCardBill: number
+  totalCardBill: number
+  totalOutflow: number
   remainingAfterSavings: number
 }
 
@@ -424,6 +427,7 @@ export interface CardStrategyResult {
   bestCardDaysUntilPayment: number
   cards: CardSummary[]
   strategies: CardPlanStrategy[]
+  billsByCard?: CardBillProjection[]
 }
 
 export interface CardSummary {
@@ -432,6 +436,8 @@ export interface CardSummary {
   lastFourDigits: string
   creditLimit: number
   availableLimit: number
+  currentAvailableLimit: number
+  restoredByStartMonth: number
   closingDay: number
   dueDay: number
   daysUntilPayment: number
@@ -455,6 +461,19 @@ export interface CardAllocation {
   daysUntilPayment: number
   dueDate: string
   explanation: string
+}
+
+export interface CardBillMonth {
+  month: string
+  label: string
+  amount: number
+}
+
+export interface CardBillProjection {
+  cardId: string
+  cardName: string
+  lastFourDigits: string
+  months: CardBillMonth[]
 }
 
 // Savings Goal types

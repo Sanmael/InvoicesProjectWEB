@@ -10,8 +10,17 @@ const showEditModal = ref(false)
 const mode = ref<'simple' | 'installment' | 'recurring'>('simple')
 const editingDebt = ref<Debt | null>(null)
 const expandedInstallmentGroupIds = ref<Set<string>>(new Set())
-const selectedMonth = ref('')
 const defaultStartMonth = new Date().toISOString().slice(0, 7)
+
+const currentYear = new Date().getFullYear()
+const currentMonth = new Date().getMonth() + 1
+const selectedMonth = ref(`${currentYear}-${String(currentMonth).padStart(2, '0')}`)
+
+const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+const yearMonths = monthNames.map((name, i) => ({
+  label: name,
+  value: `${currentYear}-${String(i + 1).padStart(2, '0')}`,
+}))
 
 const categories = [
   'Alimentação', 'Moradia', 'Transporte', 'Saúde', 'Educação', 'Lazer',
@@ -117,19 +126,55 @@ const groupedDebts = computed<DebtListItem[]>(() => {
   return result
 })
 
+function getSortDate(entry: DebtListItem): number {
+  if (entry.kind === 'single') {
+    return parseCivilDate(entry.item.dueDate).sortKey
+  }
+  return parseCivilDate(entry.representative.dueDate).sortKey
+}
+
+function isEntryPaid(entry: DebtListItem): boolean {
+  if (entry.kind === 'single') return entry.item.isPaid
+  return entry.representative.isPaid
+}
+
 const filteredGroupedDebts = computed<DebtListItem[]>(() => {
-  if (!selectedMonth.value) return groupedDebts.value
-  const [year, month] = selectedMonth.value.split('-').map(Number)
-  if (!year || !month) return groupedDebts.value
-  return groupedDebts.value.filter((entry) => {
-    if (entry.kind === 'single') {
-      const d = parseCivilDate(entry.item.dueDate)
-      return d.year === year && d.month === month
+  let list = groupedDebts.value
+
+  if (selectedMonth.value) {
+    const [year, month] = selectedMonth.value.split('-').map(Number)
+    if (year && month) {
+      list = list
+        .filter((entry) => {
+          if (entry.kind === 'single') {
+            const d = parseCivilDate(entry.item.dueDate)
+            return d.year === year && d.month === month
+          }
+          return entry.items.some((d) => {
+            const date = parseCivilDate(d.dueDate)
+            return date.year === year && date.month === month
+          })
+        })
+        .map((entry) => {
+          if (entry.kind === 'group') {
+            const monthItem = entry.items.find((d) => {
+              const dt = parseCivilDate(d.dueDate)
+              return dt.year === year && dt.month === month
+            })
+            if (monthItem) {
+              return { ...entry, representative: monthItem }
+            }
+          }
+          return entry
+        })
     }
-    return entry.items.some((d) => {
-      const date = parseCivilDate(d.dueDate)
-      return date.year === year && date.month === month
-    })
+  }
+
+  return [...list].sort((a, b) => {
+    const aPaid = isEntryPaid(a)
+    const bPaid = isEntryPaid(b)
+    if (aPaid !== bPaid) return aPaid ? 1 : -1
+    return getSortDate(a) - getSortDate(b)
   })
 })
 
@@ -243,18 +288,20 @@ async function handleDeleteGroup(groupId: string) {
         <p>Gerencie suas contas a pagar</p>
       </div>
       <div class="header-actions">
-        <div class="month-filter">
-          <label for="debt-month">Filtrar mês</label>
-          <div class="month-filter-row">
-            <div class="month-filter-input">
-              <input id="debt-month" v-model="selectedMonth" type="month" />
-              <button v-if="selectedMonth" class="btn-clear-filter" @click="selectedMonth = ''" title="Limpar filtro">✕</button>
-            </div>
-            <button @click="openModal" class="btn-primary">+ Nova Despesa</button>
-          </div>
-        </div>
+        <button @click="openModal" class="btn-primary">+ Nova Despesa</button>
       </div>
     </header>
+
+    <div class="month-buttons">
+      <button
+        v-for="m in yearMonths"
+        :key="m.value"
+        :class="['month-btn', { active: selectedMonth === m.value }]"
+        @click="selectedMonth = selectedMonth === m.value ? '' : m.value"
+      >
+        {{ m.label }}
+      </button>
+    </div>
 
     <div v-if="debtStore.loading" class="loading">Carregando...</div>
 
@@ -362,6 +409,17 @@ async function handleDeleteGroup(groupId: string) {
               </button>
             </div>
             <div class="action-buttons" v-else>
+              <span v-if="entry.representative.isPaid" class="paid-badge">Pago</span>
+              <button
+                v-else
+                @click="handleMarkAsPaid(entry.representative.id)"
+                class="btn-action btn-success"
+                title="Marcar como pago"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </button>
               <button class="btn-action btn-outline" @click="toggleGroup(entry.groupId)">
                 {{ isGroupExpanded(entry.groupId) ? 'Ocultar' : 'Abrir' }}
               </button>
@@ -619,27 +677,32 @@ async function handleDeleteGroup(groupId: string) {
 
 .header-actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
 
-.month-filter { display: flex; flex-direction: column; gap: 0.25rem; }
-.month-filter label { font-size: 0.8rem; color: var(--text-secondary); }
-.month-filter-row { display: flex; align-items: center; gap: 1rem; }
-.month-filter-input { display: flex; align-items: center; gap: 0.35rem; }
-.month-filter-input input {
-  padding: 0.5rem 0.65rem;
+.month-buttons {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+.month-btn {
+  padding: 0.5rem 1rem;
   border: 1px solid var(--input-border);
-  border-radius: var(--border-radius);
-  background: var(--input-bg);
-  color: var(--text-primary);
-}
-.btn-clear-filter {
-  background: none;
-  border: none;
-  color: var(--text-muted);
+  border-radius: 999px;
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 0.85rem;
   cursor: pointer;
-  font-size: 1.1rem;
-  padding: 0.25rem;
-  line-height: 1;
+  transition: all 0.2s ease;
 }
-.btn-clear-filter:hover { color: var(--color-danger); }
+.month-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+.month-btn.active {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
 
 .btn-primary {
   background: var(--color-primary);
@@ -767,6 +830,10 @@ async function handleDeleteGroup(groupId: string) {
   border-radius: 999px;
   font-size: 0.85rem;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
 }
 
 .group-items {
