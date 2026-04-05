@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { creditCardService } from '@/services/creditCardService'
 import { purchaseSimulationService } from '@/services/purchaseSimulationService'
 import { useToast } from '@/composables/useToast'
@@ -12,7 +12,7 @@ import type {
   SimulationPlanResult,
 } from '@/types'
 
-const { showToast } = useToast()
+const { show } = useToast()
 const cards = ref<CreditCard[]>([])
 const loading = ref(false)
 const result = ref<PurchaseSimulationResult | null>(null)
@@ -80,11 +80,15 @@ function removePlan(idx: number) {
   }
 }
 function addAllocation(planIdx: number) {
-  plans.value[planIdx].allocations.push(newAlloc())
+  const plan = plans.value[planIdx]
+  if (!plan) return
+  plan.allocations.push(newAlloc())
 }
 function removeAllocation(planIdx: number, allocIdx: number) {
-  if (plans.value[planIdx].allocations.length > 1) {
-    plans.value[planIdx].allocations.splice(allocIdx, 1)
+  const plan = plans.value[planIdx]
+  if (!plan) return
+  if (plan.allocations.length > 1) {
+    plan.allocations.splice(allocIdx, 1)
   }
 }
 
@@ -97,8 +101,11 @@ function planRemaining(plan: PlanForm) {
 
 function fillRemaining(planIdx: number, allocIdx: number) {
   const plan = plans.value[planIdx]
+  if (!plan) return
   const otherSum = plan.allocations.reduce((s, a, i) => i === allocIdx ? s : s + (a.amount || 0), 0)
-  plan.allocations[allocIdx].amount = Math.max(0, Math.round((totalAmount.value - otherSum) * 100) / 100)
+  const allocation = plan.allocations[allocIdx]
+  if (!allocation) return
+  allocation.amount = Math.max(0, Math.round((totalAmount.value - otherSum) * 100) / 100)
 }
 
 // --- Formatting ---
@@ -126,12 +133,12 @@ function cardAvailableLimit(cardId: string): number | null {
 async function simulate() {
   const validItems = items.value.filter(i => i.description.trim() && i.unitPrice > 0)
   if (validItems.length === 0) {
-    showToast('Adicione pelo menos um item com descrição e valor.', 'error')
+    show('Adicione pelo menos um item com descrição e valor.', 'error')
     return
   }
   for (const plan of plans.value) {
     if (plan.allocations.some(a => !a.creditCardId)) {
-      showToast(`"${plan.label}": selecione um cartão em cada alocação.`, 'error')
+      show(`"${plan.label}": selecione um cartão em cada alocação.`, 'error')
       return
     }
   }
@@ -157,7 +164,7 @@ async function simulate() {
     result.value = await purchaseSimulationService.simulate(payload)
     activePlanIndex.value = 0
   } catch {
-    showToast('Erro ao simular compra.', 'error')
+    show('Erro ao simular compra.', 'error')
   } finally {
     loading.value = false
   }
