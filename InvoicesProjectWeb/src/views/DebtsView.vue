@@ -1,7 +1,8 @@
 ﻿<script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import { useDebtStore } from '@/stores/debt'
-import type { CreateDebtDto, CreateInstallmentDebtDto, CreateRecurringDebtDto, UpdateDebtDto, Debt } from '@/types'
+import { tagEventoService } from '@/services/tagEventoService'
+import type { CreateDebtDto, CreateInstallmentDebtDto, CreateRecurringDebtDto, UpdateDebtDto, Debt, TagEvento } from '@/types'
 
 const debtStore = useDebtStore()
 
@@ -28,12 +29,15 @@ const categories = [
   'Tecnologia', 'Serviços', 'Família', 'Investimentos', 'Impostos', 'Outros',
 ]
 
+const eventOptions = ref<TagEvento[]>([])
+
 const simpleForm = ref<CreateDebtDto>({
   description: '',
   amount: 0,
   dueDate: '',
   notes: '',
   category: 'Outros',
+  tagEventoId: undefined,
 })
 
 const installmentForm = ref<CreateInstallmentDebtDto>({
@@ -43,6 +47,7 @@ const installmentForm = ref<CreateInstallmentDebtDto>({
   installments: 2,
   notes: '',
   category: 'Outros',
+  tagEventoId: undefined,
 })
 
 const recurringForm = ref<CreateRecurringDebtDto & { startMonth: string }>({
@@ -53,6 +58,7 @@ const recurringForm = ref<CreateRecurringDebtDto & { startMonth: string }>({
   startMonth: defaultStartMonth,
   notes: '',
   category: 'Outros',
+  tagEventoId: undefined,
 })
 
 const editForm = ref<UpdateDebtDto>({
@@ -61,11 +67,17 @@ const editForm = ref<UpdateDebtDto>({
   dueDate: '',
   notes: '',
   category: 'Outros',
+  tagEventoId: undefined,
 })
 
 onMounted(() => {
   debtStore.fetchAll()
+  loadEvents()
 })
+
+async function loadEvents() {
+  eventOptions.value = await tagEventoService.getAll()
+}
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
@@ -192,9 +204,9 @@ function toggleGroup(groupId: string) {
 
 function openModal() {
   mode.value = 'simple'
-  simpleForm.value = { description: '', amount: 0, dueDate: '', notes: '', category: 'Outros' }
-  installmentForm.value = { description: '', totalAmount: 0, firstDueDate: '', installments: 2, notes: '', category: 'Outros' }
-  recurringForm.value = { description: '', amount: 0, recurringDay: 5, months: 12, startMonth: defaultStartMonth, notes: '', category: 'Outros' }
+  simpleForm.value = { description: '', amount: 0, dueDate: '', notes: '', category: 'Outros', tagEventoId: undefined }
+  installmentForm.value = { description: '', totalAmount: 0, firstDueDate: '', installments: 2, notes: '', category: 'Outros', tagEventoId: undefined }
+  recurringForm.value = { description: '', amount: 0, recurringDay: 5, months: 12, startMonth: defaultStartMonth, notes: '', category: 'Outros', tagEventoId: undefined }
   showModal.value = true
 }
 
@@ -206,6 +218,7 @@ function openEditModal(debt: Debt) {
     dueDate: toInputDate(debt.dueDate),
     notes: debt.notes ?? '',
     category: debt.category ?? 'Outros',
+    tagEventoId: debt.tagEventoId ?? undefined,
   }
   showEditModal.value = true
 }
@@ -225,6 +238,7 @@ async function handleSubmit() {
       startDate: recurringForm.value.startMonth ? `${recurringForm.value.startMonth}-01` : undefined,
       notes: recurringForm.value.notes,
       category: recurringForm.value.category,
+      tagEventoId: recurringForm.value.tagEventoId,
     })
   } else {
     await debtStore.create(simpleForm.value)
@@ -532,6 +546,13 @@ async function handleDeleteGroup(groupId: string) {
             </select>
           </div>
           <div class="form-group">
+            <label>Evento (opcional)</label>
+            <select v-model="simpleForm.tagEventoId">
+              <option :value="undefined">Sem evento</option>
+              <option v-for="event in eventOptions" :key="event.id" :value="event.id">{{ event.nome }}</option>
+            </select>
+          </div>
+          <div class="form-group">
             <label>Observações</label>
             <textarea v-model="simpleForm.notes" rows="2"></textarea>
           </div>
@@ -565,6 +586,13 @@ async function handleDeleteGroup(groupId: string) {
             <label>Categoria</label>
             <select v-model="installmentForm.category">
               <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Evento (opcional)</label>
+            <select v-model="installmentForm.tagEventoId">
+              <option :value="undefined">Sem evento</option>
+              <option v-for="event in eventOptions" :key="event.id" :value="event.id">{{ event.nome }}</option>
             </select>
           </div>
           <div class="form-group">
@@ -610,6 +638,13 @@ async function handleDeleteGroup(groupId: string) {
             </select>
           </div>
           <div class="form-group">
+            <label>Evento (opcional)</label>
+            <select v-model="recurringForm.tagEventoId">
+              <option :value="undefined">Sem evento</option>
+              <option v-for="event in eventOptions" :key="event.id" :value="event.id">{{ event.nome }}</option>
+            </select>
+          </div>
+          <div class="form-group">
             <label>Observações</label>
             <textarea v-model="recurringForm.notes" rows="2"></textarea>
           </div>
@@ -645,6 +680,13 @@ async function handleDeleteGroup(groupId: string) {
             <label>Categoria</label>
             <select v-model="editForm.category">
               <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Evento (opcional)</label>
+            <select v-model="editForm.tagEventoId">
+              <option :value="undefined">Sem evento</option>
+              <option v-for="event in eventOptions" :key="event.id" :value="event.id">{{ event.nome }}</option>
             </select>
           </div>
           <div class="form-group">

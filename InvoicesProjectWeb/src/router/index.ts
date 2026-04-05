@@ -41,6 +41,11 @@ const router = createRouter({
           component: () => import('@/views/ReceivablesView.vue'),
         },
         {
+          path: 'eventos',
+          name: 'tag-evento',
+          component: () => import('@/views/TagEventoView.vue'),
+        },
+        {
           path: 'credit-cards',
           name: 'credit-cards',
           component: () => import('@/views/CreditCardsView.vue'),
@@ -64,6 +69,11 @@ const router = createRouter({
           path: 'purchase-plan',
           name: 'purchase-plan',
           component: () => import('@/views/PurchasePlanView.vue'),
+        },
+        {
+          path: 'purchase-simulation',
+          name: 'purchase-simulation',
+          component: () => import('@/views/PurchaseSimulationView.vue'),
         },
         {
           path: 'savings-goals',

@@ -1,7 +1,8 @@
 ﻿<script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
 import { useReceivableStore } from '@/stores/receivable'
-import type { CreateReceivableDto, CreateRecurringReceivableDto, UpdateReceivableDto, Receivable } from '@/types'
+import { tagEventoService } from '@/services/tagEventoService'
+import type { CreateReceivableDto, CreateRecurringReceivableDto, UpdateReceivableDto, Receivable, TagEvento } from '@/types'
 
 const receivableStore = useReceivableStore()
 
@@ -11,6 +12,7 @@ const mode = ref<'simple' | 'recurring'>('simple')
 const editingReceivable = ref<Receivable | null>(null)
 const expandedRecurringGroupIds = ref<Set<string>>(new Set())
 const buttonLoading = ref(false)
+const eventOptions = ref<TagEvento[]>([])
 
 const currentYear = new Date().getFullYear()
 const currentMonth = new Date().getMonth() + 1
@@ -27,6 +29,7 @@ const simpleForm = ref<CreateReceivableDto>({
   amount: 0,
   expectedDate: '',
   notes: '',
+  tagEventoId: undefined,
 })
 
 const recurringForm = ref<CreateRecurringReceivableDto>({
@@ -35,6 +38,7 @@ const recurringForm = ref<CreateRecurringReceivableDto>({
   recurringDay: 5,
   notes: '',
   months: 12,
+  tagEventoId: undefined,
 })
 
 const editForm = ref<UpdateReceivableDto>({
@@ -42,11 +46,17 @@ const editForm = ref<UpdateReceivableDto>({
   amount: 0,
   expectedDate: '',
   notes: '',
+  tagEventoId: undefined,
 })
 
 onMounted(() => {
   receivableStore.fetchAll()
+  loadEvents()
 })
+
+async function loadEvents() {
+  eventOptions.value = await tagEventoService.getAll()
+}
 
 const formatCurrency = (value: number) => {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
@@ -168,8 +178,8 @@ function toggleGroup(groupId: string) {
 
 function openModal() {
   mode.value = 'simple'
-  simpleForm.value = { description: '', amount: 0, expectedDate: '', notes: '' }
-  recurringForm.value = { description: '', amount: 0, recurringDay: 5, notes: '', months: 12 }
+  simpleForm.value = { description: '', amount: 0, expectedDate: '', notes: '', tagEventoId: undefined }
+  recurringForm.value = { description: '', amount: 0, recurringDay: 5, notes: '', months: 12, tagEventoId: undefined }
   showModal.value = true
 }
 
@@ -180,6 +190,7 @@ function openEditModal(receivable: Receivable) {
     amount: receivable.amount,
     expectedDate: toInputDate(receivable.expectedDate),
     notes: receivable.notes ?? '',
+    tagEventoId: receivable.tagEventoId ?? undefined,
   }
   showEditModal.value = true
 }
@@ -460,6 +471,13 @@ async function handleDeleteGroup(groupId: string) {
             <input v-model="simpleForm.expectedDate" type="date" required />
           </div>
           <div class="form-group">
+            <label>Evento (opcional)</label>
+            <select v-model="simpleForm.tagEventoId">
+              <option :value="undefined">Sem evento</option>
+              <option v-for="event in eventOptions" :key="event.id" :value="event.id">{{ event.nome }}</option>
+            </select>
+          </div>
+          <div class="form-group">
             <label>Observações</label>
             <textarea v-model="simpleForm.notes" rows="2"></textarea>
           </div>
@@ -486,6 +504,13 @@ async function handleDeleteGroup(groupId: string) {
           <div class="form-group">
             <label>Gerar para quantos meses (1-60)</label>
             <input v-model.number="recurringForm.months" type="number" min="1" max="60" required />
+          </div>
+          <div class="form-group">
+            <label>Evento (opcional)</label>
+            <select v-model="recurringForm.tagEventoId">
+              <option :value="undefined">Sem evento</option>
+              <option v-for="event in eventOptions" :key="event.id" :value="event.id">{{ event.nome }}</option>
+            </select>
           </div>
           <div class="recurring-preview">
             Serão criadas <strong>{{ recurringForm.months }}</strong> entradas de
@@ -522,6 +547,13 @@ async function handleDeleteGroup(groupId: string) {
           <div class="form-group">
             <label>Data Prevista</label>
             <input v-model="editForm.expectedDate" type="date" required />
+          </div>
+          <div class="form-group">
+            <label>Evento (opcional)</label>
+            <select v-model="editForm.tagEventoId">
+              <option :value="undefined">Sem evento</option>
+              <option v-for="event in eventOptions" :key="event.id" :value="event.id">{{ event.nome }}</option>
+            </select>
           </div>
           <div class="form-group">
             <label>Observações</label>
@@ -807,6 +839,7 @@ async function handleDeleteGroup(groupId: string) {
   color: var(--text-primary); 
 }
 .form-group input,
+.form-group select,
 .form-group textarea {
   width: 100%;
   padding: 0.75rem;
@@ -819,6 +852,7 @@ async function handleDeleteGroup(groupId: string) {
   transition: border-color 0.2s ease;
 }
 .form-group input:focus,
+.form-group select:focus,
 .form-group textarea:focus { 
   outline: none; 
   border-color: var(--color-primary); 

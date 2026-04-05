@@ -48,6 +48,7 @@ export interface Debt {
   totalInstallments: number | null
   installmentNumber: number | null
   installmentGroupId: string | null
+  tagEventoId: string | null
   createdAt: string
 }
 
@@ -57,6 +58,7 @@ export interface CreateDebtDto {
   dueDate: string
   notes?: string
   category?: string
+  tagEventoId?: string
 }
 
 export interface CreateInstallmentDebtDto {
@@ -66,6 +68,7 @@ export interface CreateInstallmentDebtDto {
   installments: number
   notes?: string
   category?: string
+  tagEventoId?: string
 }
 
 export interface CreateRecurringDebtDto {
@@ -76,6 +79,7 @@ export interface CreateRecurringDebtDto {
   startDate?: string
   notes?: string
   category?: string
+  tagEventoId?: string
 }
 
 export interface UpdateDebtDto {
@@ -85,6 +89,7 @@ export interface UpdateDebtDto {
   isPaid?: boolean
   notes?: string
   category?: string
+  tagEventoId?: string
 }
 
 // Receivable types
@@ -99,6 +104,7 @@ export interface Receivable {
   isRecurring: boolean
   recurringDay: number | null
   recurrenceGroupId: string | null
+  tagEventoId: string | null
   createdAt: string
 }
 
@@ -107,6 +113,7 @@ export interface CreateReceivableDto {
   amount: number
   expectedDate: string
   notes?: string
+  tagEventoId?: string
 }
 
 export interface CreateRecurringReceivableDto {
@@ -115,6 +122,7 @@ export interface CreateRecurringReceivableDto {
   recurringDay: number
   notes?: string
   months?: number
+  tagEventoId?: string
 }
 
 export interface UpdateReceivableDto {
@@ -123,6 +131,7 @@ export interface UpdateReceivableDto {
   expectedDate?: string
   isReceived?: boolean
   notes?: string
+  tagEventoId?: string
 }
 
 // Credit Card types
@@ -562,4 +571,112 @@ export interface FinancialScore {
   classification: string
   breakdown: FinancialScoreBreakdown
   tips: string[]
+}
+
+// Purchase Simulation types
+export interface SimulationItem {
+  description: string
+  quantity: number
+  unitPrice: number
+}
+
+export interface SimulationAllocation {
+  creditCardId: string
+  amount: number
+  installments: number
+}
+
+export interface SimulationPlanRequest {
+  label: string
+  allocations: SimulationAllocation[]
+}
+
+export interface PurchaseSimulationRequest {
+  items: SimulationItem[]
+  plans: SimulationPlanRequest[]
+  projectionMonths?: number
+  startYear?: number
+  startMonth?: number
+}
+
+export interface SimulationItemResult {
+  description: string
+  quantity: number
+  unitPrice: number
+  subtotal: number
+}
+
+export interface SimulationCardInfo {
+  id: string
+  name: string
+  lastFourDigits: string
+  creditLimit: number | null
+  totalPending: number
+  availableLimit: number | null
+}
+
+export interface SimulationAllocationResult {
+  creditCardId: string
+  cardName: string
+  lastFourDigits: string
+  amount: number
+  installments: number
+  installmentValue: number
+  availableLimit: number | null
+  exceedsLimit: boolean
+}
+
+export interface SimulationMonthProjection {
+  year: number
+  month: number
+  label: string
+  totalReceivables: number
+  existingDebts: number
+  existingCardPurchases: number
+  simulatedInstallment: number
+  totalExpenses: number
+  balance: number
+}
+
+export interface SimulationPlanResult {
+  label: string
+  allocations: SimulationAllocationResult[]
+  totalAllocated: number
+  unallocated: number
+  hasLimitIssues: boolean
+  monthlyProjections: SimulationMonthProjection[]
+}
+
+export interface PurchaseSimulationResult {
+  items: SimulationItemResult[]
+  totalAmount: number
+  availableCards: SimulationCardInfo[]
+  plans: SimulationPlanResult[]
+}
+
+// TagEvento types
+export interface TagEvento {
+  id: string
+  nome: string
+  descricao: string | null
+  dataInicio: string | null
+  dataFim: string | null
+  createdAt: string
+  totalDebts: number
+  totalCardPurchases: number
+  totalGastos: number
+}
+
+export interface CreateTagEventoDto {
+  nome: string
+  descricao?: string
+  dataInicio?: string
+  dataFim?: string
+}
+
+export interface UpdateTagEventoDto {
+  nome?: string
+  descricao?: string
+  dataInicio?: string
+  dataFim?: string
 }
